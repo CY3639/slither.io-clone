@@ -39,3 +39,4 @@ figcaption { font-size: 8.8pt; color: #444; margin-top: 4px; }
 .toc li { margin: 3px 0; }
 .toc ol ol { padding-left: 18px; }
 .toc a { color: #0b3d6b; text-decoration: none; }
+.title-page code { background: rgba(255,255,255,.18); color: #fff; }

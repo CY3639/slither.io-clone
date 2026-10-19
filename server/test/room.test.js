@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { fakeConn, joinMsg, makeRoom, runFor } from './helpers.js';
+
+// Load the browser's SnapshotBuffer (a plain script) to test the wire format end to end.
+const clientCtx = {};
+vm.runInNewContext(readFileSync(new URL('../../client/src/snapshotBuffer.js', import.meta.url), 'utf8') + ';this.SnapshotBuffer = SnapshotBuffer;', clientCtx);
+const clientDecodeBody = clientCtx.SnapshotBuffer.decodeBody;
 
 function npcCount(room) {
     return [...room.world.snakes.values()].filter((s) => !s.isHuman).length;
@@ -111,19 +118,27 @@ test('snapshots contain the own snake and stay within the area of interest', () 
     assert.ok(snap.sn.length < 50, `AoI culls distant snakes (${snap.sn.length} visible)`);
     assert.equal(me.p.length % 2, 0);
 
-    // Points are delta-encoded: decoding must give back the authoritative section positions.
+    // Bodies are delta-encoded at half resolution. Decode with the real client decoder and check
+    // the round trip against the authoritative positions.
     room.broadcastSnapshot(clock.now()); // fresh snapshot of the current state
     const fresh = a.last('s');
     const mine = fresh.sn.find((s) => s.i === fresh.me);
     const snake = room.world.snakes.get(fresh.me);
-    const abs = [...mine.p];
-    for (let k = 2; k < abs.length; k++) abs[k] += abs[k - 2];
-    assert.equal(abs.length / 2, snake.length);
+    assert.equal(mine.l, snake.length);
+    assert.equal(mine.p.length, 2 * (Math.ceil(snake.length / 2) + (snake.length % 2 === 0 ? 1 : 0)), 'half resolution + tail');
+    assert.ok(Math.max(...mine.p.slice(2).map(Math.abs)) < 60, 'deltas are small numbers');
+    const full = clientDecodeBody([...mine.p], mine.l);
+    assert.equal(full.length, snake.length * 2);
     for (let i = 0; i < snake.length; i++) {
-        assert.equal(abs[i * 2], Math.round(snake.secX[i]));
-        assert.equal(abs[i * 2 + 1], Math.round(snake.secY[i]));
+        const x = full[i * 2];
+        const y = full[i * 2 + 1];
+        if (i % 2 === 0 || i === snake.length - 1) {
+            assert.equal(x, Math.round(snake.secX[i]));
+            assert.equal(y, Math.round(snake.secY[i]));
+        } else {
+            assert.ok(Math.hypot(x - snake.secX[i], y - snake.secY[i]) < 2, `midpoint of section ${i} within 2 px`);
+        }
     }
-    assert.ok(Math.max(...mine.p.slice(2).map(Math.abs)) < 30, 'deltas are small numbers');
 });
 
 test('drain sends bye, closes sockets and ends the world', () => {

@@ -141,7 +141,7 @@ path; green = edge delivery. Only the CDN is publicly reachable.</figcaption></f
 ≤4 humans), lives entirely in one worker's memory, and shares no real-time state with any other world. Scaling out
 means <i>adding worlds</i>, not partitioning one world across machines.</p>
 <p>This removes distributed consistency from the hot path. Each 30 Hz tick is a single-threaded loop over local
-memory (measured at about 0.3 ms per tick for a full world, §4.5), with no cross-node locks, replicated physics or
+memory (a full world's median tick measured 1.3 ms on a 0.25 vCPU Fargate task, §4.5), with no cross-node locks, replicated physics or
 consensus protocol. It also makes capacity planning arithmetic: because NPCs are workload rather than users,</p>
 <pre>requiredWorlds = ceil(concurrentHumans / 4)        runningWorkers ≈ ceil(concurrentHumans / (4 × targetOccupancy))</pre>
 <p>The trade-off is explicit. <b>A world's transient state exists only inside its worker</b>. If that worker fails or is
@@ -376,9 +376,8 @@ appears as the early spike; the measured run starts at 12:07.</figcaption></figu
 <p>Each step needed three consecutive one-minute datapoints above target plus the 60 s scale-out cooldown, so the
 fleet grew by one world roughly every 2–3 minutes, and the sequence 1→2→3→4→5 followed
 <code>ceil(tasks × occupancy / 75)</code>. New tasks were registered and healthy 30–45 s after each decision. Across the run the
-load tester recorded <b>0 connection errors</b>, WebSocket RTT <b>p50 16 ms / p95 ⟦RTT_P95⟧ ms</b> from Brisbane via the
-BNE edge, and a snapshot interval of p50 67 ms (15 Hz) <span class="ev">[E14]</span>. Per-task CPU stayed at 20–30 % and the p99 tick
-time stayed under ⟦TICK_P99⟧ ms of the 33 ms budget <span class="ev">[E15]</span>.</p>
+load tester recorded <b>0 connection errors</b>, WebSocket RTT <b>p50 16 ms / p95 29 ms / p99 68 ms</b> (8,769 pings) from Brisbane via the
+BNE edge, and a snapshot interval of p50 67 ms (15 Hz) <span class="ev">[E14]</span>. Per-task CPU stayed at 20–30 %. On Fargate the median tick took 1.3 ms and the p99 averaged 2.3 ms (worst 10 s window 13.4 ms) against the 33 ms budget <span class="ev">[E15]</span>.</p>
 <p><b>Load distribution.</b> The ALB uses round robin for new connections. Combined with <code>ROOM_FULL</code> and client
 retry, this acts as simple decentralised matchmaking: the load tester's per-task counts show players spread evenly
 over the new worlds as they appeared (4/4/4/2) <span class="ev">[E14]</span>, with targets healthy in all three AZs <span class="ev">[E13]</span>.</p>

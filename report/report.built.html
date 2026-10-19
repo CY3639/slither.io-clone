@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CAB432 Assessment 3 — Battle Snake — n5528712</title>
+<link rel="stylesheet" href="report.css" />
+</head>
+<body>
+
+<!-- ================================================================ TITLE PAGE -->
+<section class="title-page">
+  <div class="unit">CAB432 Cloud Computing · Assessment 3 · Cloud Project</div>
+  <h1 class="t">Battle Snake: a horizontally scaled, server-authoritative multiplayer Slither.io on AWS</h1>
+  <div class="sub">Technical report</div>
+  <table>
+    <tr><td>Student</td><td>Yun Chi Yip</td></tr>
+    <tr><td>Student ID</td><td>n5528712</td></tr>
+    <tr><td>QUT username</td><td>n5528712@qut.edu.au</td></tr>
+    <tr><td>Deployed application</td><td>https://d3riy98bj197ur.cloudfront.net/</td></tr>
+    <tr><td>AWS region / account</td><td>ap-southeast-2 · 901444280953</td></tr>
+    <tr><td>Date</td><td>19 October 2026</td></tr>
+  </table>
+  <div class="ai">
+    <h3>Generative AI use declaration ⟦STUDENT TO REVIEW AND CONFIRM BEFORE SUBMISSION⟧</h3>
+    <p>Generative AI was used extensively in this assessment. Anthropic's Claude (through the Claude Code
+    agentic coding tool) worked under my direction and on my instructions: it inspected the starting repository,
+    designed the architecture, wrote the server, client, Lambda, infrastructure-as-code and test code,
+    ran the local, Docker and AWS deployments and tests, collected the evidence in the <code>evidence/</code> folder,
+    and drafted this report from that evidence. I set the requirements, scope and constraints, provided the account
+    access and the starting code (a fork of Loonride's open-source Slither.io tutorial clone), reviewed the outputs,
+    and am responsible for the submitted work.</p>
+    <p>All measurements reported here come from the deployed system and test runs, not from the AI's assumptions.
+    ⟦Replace or extend this statement with the exact wording QUT/CAB432 requires, and describe your own
+    review and contribution accurately.⟧</p>
+  </div>
+</section>
+
+<!-- ================================================================ EXECUTIVE SUMMARY -->
+<h1 class="nobreak" id="exec">Executive summary</h1>
+<p>This project turns Loonride's single-player Phaser Slither.io tutorial into a cloud-native multiplayer game,
+deployed on AWS in ap-southeast-2 as a vehicle for demonstrating scalable cloud architecture. The original sprites,
+renderer and gameplay rules are reused, but every outcome (movement, eating, growth, collision, death, score) is now
+decided by a server-side simulation. Browsers send only steering intent over WebSockets and render interpolated
+snapshots.</p>
+<p>The unit of scale is an <b>independent authoritative world</b>: one ECS Fargate task runs one 50-snake world for
+up to four humans, with NPCs filling the remaining slots. Worlds share no real-time state, so capacity grows
+linearly by adding tasks (<code>worlds = ceil(humans / 4)</code>), while everything of lasting value leaves the task as
+events (SQS → Lambda → DynamoDB). CloudFront is the single HTTPS/WSS entry point: it serves the fingerprinted
+client from a private S3 bucket, caches the leaderboard for 10 s, and forwards WebSockets to an Application Load
+Balancer that accepts only CloudFront's secret header.</p>
+<p>Key measured results:</p>
+<ul>
+  <li><b>ECS Service Auto Scaling</b> took the service from <b>1 to 5 tasks</b> in seven minutes (12:10–12:17 AEST) under
+  14 synthetic players, seating all of them across four worlds plus one empty headroom world, with 0 connection errors and
+  RTT p50 16 ms. Measurement showed a full world uses only 20–30 % of its 0.25 vCPU, so a custom world-occupancy metric
+  (target 75 %) is the primary scaling signal, with CPU as a safety net. ECS task scale-in protection prevents
+  scale-in from ending games in progress. ⟦SCALE_IN_SUMMARY⟧</li>
+  <li><b>Edge caching:</b> fingerprinted assets are CloudFront hits from the Brisbane edge (≈20 ms). The leaderboard API
+  drops from 615 ms (miss) to ≈20 ms (hit).</li>
+  <li><b>Asynchronous, idempotent persistence:</b> real game events flowed through SQS and Lambda into DynamoDB, including
+  out-of-order delivery. A poison message was retried three times, dead-lettered, and raised an alarm.</li>
+  <li><b>Resilience:</b> stopping a task that hosted four players moved them to other worlds within one 5 s sample. ECS
+  replaced the task in under a minute, and the dying task flushed all 206 of its events.</li>
+  <li><b>Cost:</b> measurement identified egress, not compute, as the main cost. Delta encoding and permessage-deflate cut
+  bytes per player by ~85 %, giving ≈ US$0.011 per player-hour (≈ $495/month at 60 concurrent players).</li>
+</ul>
+<p>The CAB432 account's guardrails (no IAM role, security group or certificate creation; no deletion of buckets or
+log groups) forced several adaptations, which are documented with their residual risks in §3.2.</p>
+
+
+<!-- ================================================================ TOC -->
+<h2 id="toc">Table of contents</h2>
+<div class="toc">
+<ol>
+  <li><a href="#intro">1 Introduction</a></li>
+  <li><a href="#vna">2 Vendor-agnostic architecture</a>
+    <ol><li><a href="#vna-components">2.1 Components</a></li><li><a href="#vna-worlds">2.2 Independent authoritative worlds</a></li><li><a href="#vna-flows">2.3 Data and control flows</a></li><li><a href="#vna-alt">2.4 Alternatives considered</a></li></ol></li>
+  <li><a href="#aws">3 Vendor-specific implementation (AWS)</a>
+    <ol><li><a href="#aws-map">3.1 Service mapping</a></li><li><a href="#aws-constraints">3.2 Account constraints and adaptations</a></li><li><a href="#aws-sec">3.3 Security</a></li><li><a href="#aws-data">3.4 Data model</a></li><li><a href="#aws-iac">3.5 Infrastructure as code and observability</a></li></ol></li>
+  <li><a href="#app">4 Application implementation</a>
+    <ol><li><a href="#app-reuse">4.1 From a single-player tutorial to an authoritative server</a></li><li><a href="#app-flows">4.2 Workflows</a></li><li><a href="#app-net">4.3 Networking and bandwidth</a></li><li><a href="#app-persist">4.4 Asynchronous persistence</a></li><li><a href="#app-scale">4.5 Scaling: design and measured behaviour</a></li><li><a href="#app-res">4.6 Resilience</a></li><li><a href="#app-cache">4.7 Edge caching</a></li><li><a href="#app-test">4.8 Testing</a></li></ol></li>
+  <li><a href="#cost">5 Cost and sustainability</a></li>
+  <li><a href="#reflect">6 Reflection</a></li>
+  <li><a href="#refs">References</a></li>
+  <li><a href="#appx">Appendices</a></li>
+</ol>
+</div>
+
+<!-- ================================================================ 1 INTRODUCTION -->
+<h1 id="intro">1 Introduction</h1>
+<p>Real-time multiplayer games are a demanding workload for cloud architecture. They need stateful compute that
+updates many entities dozens of times per second, low-latency bidirectional communication, durable records of
+outcomes, and capacity that follows a player population that changes through the day. This project uses a small
+Slither.io-style game as a vehicle to build and measure such a system on AWS.</p>
+<p>The starting point was Loonride's open-source tutorial clone of Slither.io (Loonride, 2017). It is a single-browser
+Phaser CE 2.6.2 game in which a P2 physics engine running in the page decides movement, collisions, food
+consumption and growth for one player and two bots. Nothing in it is networked, and the browser is the authority on
+every outcome, so a multiplayer version could not trust it. The project keeps the original sprites, renderer,
+movement constants and rules, and moves all authority to a server-side simulation.</p>
+<h2>Scope</h2>
+<ul>
+  <li>Players enter an anonymous display name and join a <b>world</b>: an arena that always holds <b>50 snakes</b>.
+  At most <b>4 are humans</b> and the rest are server-controlled NPCs (<code>NPCs = 50 − humans</code>).</li>
+  <li>The first human starts a lobby of <b>at most 10 seconds</b>. The world starts early when four humans are present.
+  Later humans replace an NPC immediately. A fifth human receives <code>ROOM_FULL</code> and is routed elsewhere.</li>
+  <li>The server simulates movement, eating, growth, collisions and death at 30 Hz. Clients only send intent
+  (heading and boost) and render interpolated snapshots.</li>
+  <li>Deaths and session results are stored durably and feed a global leaderboard.</li>
+</ul>
+<h2>Objectives</h2>
+<p>The engineering objectives were a cloud architecture that (i) scales <b>horizontally with demand using
+non-Lambda auto-scaling</b>, (ii) distributes connections across stateful workers, (iii) keeps durable data outside
+those workers, (iv) caches static content at the edge, (v) processes outcomes asynchronously and idempotently,
+(vi) is observable and recovers from failures, and (vii) stays cost-proportionate. Every claim in this report is
+backed by a captured artefact. Evidence identifiers such as <span class="ev">[E11]</span> refer to the register in
+Appendix B and files in the repository's <code>evidence/</code> folder.</p>
+
+<!-- ================================================================ 2 VENDOR-AGNOSTIC -->
+<h1 id="vna">2 Vendor-agnostic architecture</h1>
+<figure><img src="figures/vendor-neutral.svg" alt="Vendor-neutral architecture" />
+<figcaption>Figure 1. Vendor-neutral architecture. Orange = stateful game workers; blue = asynchronous/serverless
+path; green = edge delivery. Only the CDN is publicly reachable.</figcaption></figure>
+
+<h2 id="vna-components">2.1 Components</h2>
+<table>
+<tr><th style="width:20%">Concept</th><th style="width:40%">Responsibility in this system</th><th>Why it is needed</th></tr>
+<tr><td>Edge cache / CDN</td><td>Terminates TLS near players. Caches fingerprinted static files for a year and the leaderboard response for 10 s. Proxies WebSocket upgrades and API calls to the private origin.</td><td>Static delivery scales independently of game servers. Repeat requests never reach the origin. A single origin for page, API and socket removes CORS and needs one certificate.</td></tr>
+<tr><td>Object storage</td><td>Holds the built client (HTML, one JS bundle, Phaser, sprites), readable only by the CDN.</td><td>Durable, cheap, serverless hosting for immutable assets.</td></tr>
+<tr><td>Load balancer</td><td>Accepts traffic only from the CDN, health-checks workers, and assigns each new WebSocket to a healthy worker (dispatcher-push).</td><td>Hides individual workers, removes failed ones from rotation, and spreads <i>new</i> sessions.</td></tr>
+<tr><td>Containerised game workers</td><td>Each worker process owns exactly one authoritative world: lobby, 50 snake slots, food, 30 Hz tick, 15 Hz snapshots.</td><td>Real-time simulation needs long-lived in-memory state, held sockets and a steady CPU budget. Short-lived functions fit this poorly.</td></tr>
+<tr><td>Horizontal autoscaler</td><td>Adds or removes workers from measured world occupancy and CPU. Workers hosting players opt out of scale-in.</td><td>Capacity follows demand without terminating games in progress.</td></tr>
+<tr><td>Message queue + dead-letter queue</td><td>Durable buffer for domain events (<code>PLAYER_DIED</code>, <code>SESSION_ENDED</code>, <code>WORLD_STARTED</code>, <code>WORLD_COMPLETED</code>).</td><td>Decouples the latency-critical tick from database writes, absorbs bursts, retries failures and isolates poison messages.</td></tr>
+<tr><td>Asynchronous worker (function)</td><td>Applies events in batches, idempotently.</td><td>Scales to zero. Retry semantics come from the queue.</td></tr>
+<tr><td>Structured key-value store</td><td>Player profiles, death history, world records, idempotency markers, and a secondary index ordered by best score.</td><td>Durable state lives outside the stateful workers. Every access is a key lookup or an ordered range, never a scan.</td></tr>
+<tr><td>Read API (function)</td><td>Serves the leaderboard and a player's statistics.</td><td>Keeps workers focused on simulation. Responses are cacheable at the edge.</td></tr>
+<tr><td>Monitoring system</td><td>Structured logs, platform and custom metrics, dashboards, alarms.</td><td>Drives scaling decisions and makes failures diagnosable.</td></tr>
+</table>
+
+<h2 id="vna-worlds">2.2 Independent authoritative worlds</h2>
+<p>The central decision is that <b>the unit of scale is an independent world</b>. A world is small (50 snakes,
+≤4 humans), lives entirely in one worker's memory, and shares no real-time state with any other world. Scaling out
+means <i>adding worlds</i>, not partitioning one world across machines.</p>
+<p>This removes distributed consistency from the hot path. Each 30 Hz tick is a single-threaded loop over local
+memory (measured at about 0.3 ms per tick for a full world, §4.5), with no cross-node locks, replicated physics or
+consensus protocol. It also makes capacity planning arithmetic: because NPCs are workload rather than users,</p>
+<pre>requiredWorlds = ceil(concurrentHumans / 4)        runningWorkers ≈ ceil(concurrentHumans / (4 × targetOccupancy))</pre>
+<p>The trade-off is explicit. <b>A world's transient state exists only inside its worker</b>. If that worker fails or is
+replaced, the positions and current lengths in that world are lost, and its players reconnect to another world
+within seconds. That is acceptable for a casual arena game, where a round is short and losing it costs a player one
+life. Everything with long-term value (scores, deaths, best scores, world summaries) leaves the worker as an
+event at the moment it happens and is stored durably. Restoring exact world state would need checkpointing or
+replication at tick rate, a large cost in complexity, bandwidth and latency for little player benefit. A single
+global world was rejected for the same reason: it would need spatial partitioning with entity hand-over and
+cross-node collision detection.</p>
+
+<h2 id="vna-flows">2.3 Data and control flows</h2>
+<ol>
+  <li><b>Join.</b> Browser → CDN → load balancer → some worker. If the world has a free human slot, the player joins.
+  Otherwise the worker replies <code>ROOM_FULL</code> and closes. The client retries after 150–600 ms jitter, so the load
+  balancer can choose another worker. After five quick attempts it backs off exponentially (≤5 s) for about three
+  minutes while the autoscaler adds a world.</li>
+  <li><b>Lobby and start.</b> The first human starts a ≤10 s countdown. The fourth human starts the world immediately.
+  At start, empty slots are filled with NPCs.</li>
+  <li><b>Play.</b> Clients send intent at ≤20 Hz. The worker ticks at 30 Hz and sends each client a 15 Hz snapshot
+  limited to its area of interest. Clients render 110 ms behind real time and interpolate.</li>
+  <li><b>Persist.</b> Outcomes become events with unique IDs → queue → worker function → conditional, transactional
+  writes → ranked index → read API → edge cache.</li>
+  <li><b>Scale.</b> Workers publish occupancy and tick metrics. The autoscaler tracks targets for occupancy and CPU.
+  Workers with players protect themselves from scale-in.</li>
+</ol>
+
+<h2 id="vna-alt">2.4 Alternatives considered</h2>
+<table>
+<tr><th style="width:17%">Decision</th><th style="width:20%">Chosen</th><th style="width:20%">Rejected</th><th>Reasoning</th></tr>
+<tr><td>Real-time transport</td><td>WebSocket</td><td>HTTP polling; WebRTC/UDP</td><td>Polling costs one request per update per client at 15 Hz. WebRTC needs signalling and TURN servers and isn't proxied by standard CDNs or load balancers. WebSocket gives one full-duplex connection that passes through the CDN and load balancer.</td></tr>
+<tr><td>Authority</td><td>Server-authoritative</td><td>Client-authoritative (original game)</td><td>A client could forge position, score or invulnerability. The leaderboard is only meaningful if the server is the referee.</td></tr>
+<tr><td>World topology</td><td>Many small independent worlds</td><td>One global world</td><td>Linear scale-out without distributed state (§2.2).</td></tr>
+<tr><td>Game compute</td><td>Managed containers</td><td>Functions; self-managed VMs</td><td>Functions are short-lived and stateless. VMs add patching and capacity management, and only pay off at sustained high utilisation.</td></tr>
+<tr><td>Persistence path</td><td>Async queue</td><td>Synchronous writes from the game loop</td><td>Synchronous writes add network latency and database throttling to the tick and connection path. A queue absorbs bursts and retries.</td></tr>
+<tr><td>Static delivery</td><td>CDN + private object store</td><td>Served by game workers; public bucket</td><td>Workers would spend CPU and bandwidth on static files. A public bucket has no edge cache and more exposure.</td></tr>
+<tr><td>Datastore</td><td>Key-value store + ordered index</td><td>Relational database</td><td>Access patterns are key lookups and "top N by score". Pay-per-request with no instance to run. Joins are unused.</td></tr>
+<tr><td>Scaling signal</td><td>World occupancy (custom) + CPU</td><td>CPU only; request count</td><td>Request count is meaningless for long-lived sockets. Measurement showed a full world uses only ~20–30 % of its CPU allocation, so CPU alone never triggers (§4.5). Occupancy measures user capacity directly.</td></tr>
+<tr><td>Lost world</td><td>Reconnect to any world</td><td>Checkpoint/replicate state</td><td>Disproportionate cost for casual sessions. Durable stats are already safe.</td></tr>
+</table>
+
+<!-- ================================================================ 3 AWS -->
+<h1 id="aws">3 Vendor-specific implementation (AWS)</h1>
+<figure><img src="figures/aws-architecture.svg" alt="AWS architecture" />
+<figcaption>Figure 2. Deployed AWS architecture (ap-southeast-2). Resource names are the real deployed identifiers.
+The ALB sits in the three public subnets; game tasks run in the three private subnets without public IPs.</figcaption></figure>
+
+<h2 id="aws-map">3.1 Service mapping</h2>
+<table>
+<tr><th style="width:16%">Concept</th><th style="width:18%">AWS service</th><th>Deployed configuration and rationale</th></tr>
+<tr><td>Edge cache / CDN</td><td>Amazon CloudFront</td><td>One distribution (<code>d3riy98bj197ur.cloudfront.net</code>), HTTP/2 and HTTP/3, <code>PriceClass_All</code> (Australian edge locations are only in this class; requests were served from <code>BNE50</code>, Brisbane). Default behaviour → S3 with the managed <i>CachingOptimized</i> policy. <code>/ws</code> → ALB with <i>CachingDisabled</i> and <i>AllViewerExceptHostHeader</i>, which forwards the WebSocket upgrade headers. <code>/api/*</code> → ALB with a custom policy (default TTL 10 s, cache key = <code>limit</code>, <code>id</code> query strings only). The origin request carries a secret <code>X-Origin-Verify</code> header.</td></tr>
+<tr><td>Object storage</td><td>Amazon S3</td><td>Private bucket <code>n5528712-a3-frontend-901444280953</code>, Block Public Access on, bucket policy allowing <code>s3:GetObject</code> only to this distribution through Origin Access Control (OAC). Objects carry <code>Cache-Control: public, max-age=31536000, immutable</code> (content-hashed names) or <code>no-cache</code> (<code>index.html</code>).</td></tr>
+<tr><td>Load balancer</td><td>Application Load Balancer</td><td><code>n5528712-a3-alb</code> across three AZs, idle timeout 120 s. Listener rules forward <code>/ws</code>, <code>/health</code>, <code>/ready</code>, <code>/status</code> to an IP target group (port 8080, health check <code>/ready</code> every 10 s, deregistration delay 15 s, round robin) and <code>/api/*</code> to a Lambda target group, <b>only when the secret header is present</b>. The default action is a fixed 403.</td></tr>
+<tr><td>Game workers</td><td>Amazon ECS on AWS Fargate</td><td>Cluster <code>n5528712-a3-cluster</code> (Container Insights on), service <code>n5528712-a3-game</code>. Task: 0.25 vCPU, 0.5 GB, <b>ARM64 (Graviton)</b>, image from ECR, container health check on <code>/health</code>, <code>stopTimeout</code> 30 s, deployment circuit breaker with rollback. Tasks run in private subnets with no public IP.</td></tr>
+<tr><td>Container registry</td><td>Amazon ECR</td><td><code>a3/n5528712-a3-game</code>, scan on push, lifecycle keeps the newest 10 images. Image built for <code>linux/arm64</code>, <code>node:22-alpine</code>, non-root.</td></tr>
+<tr><td>Autoscaler</td><td>Application Auto Scaling (ECS Service Auto Scaling)</td><td>Scalable target 1–6 tasks. Target tracking on the custom metric <code>WorldOccupancyPct</code> (Average, target 75 %) and on <code>ECSServiceAverageCPUUtilization</code> (target 50 %). Scale-out cooldown 60 s, scale-in 180 s. Tasks with players set <b>ECS task scale-in protection</b> through the ECS agent endpoint.</td></tr>
+<tr><td>Message queue</td><td>Amazon SQS</td><td>Standard queue <code>n5528712-a3-events</code>: visibility timeout 60 s (6× the worker timeout), retention 4 days, long polling 20 s, SSE. Redrive to <code>n5528712-a3-events-dlq</code> after <code>maxReceiveCount = 3</code> (retention 14 days).</td></tr>
+<tr><td>Async worker</td><td>AWS Lambda</td><td><code>n5528712-a3-event-worker</code>, Node.js 22, arm64, 256 MB, 10 s timeout. SQS event source mapping: batch 10, 2 s batching window, <code>ReportBatchItemFailures</code>, maximum concurrency 2.</td></tr>
+<tr><td>Read API</td><td>AWS Lambda (ALB target)</td><td><code>n5528712-a3-leaderboard-api</code>, 128 MB. Returns <code>Cache-Control: public, max-age=10</code> for the leaderboard.</td></tr>
+<tr><td>Structured store</td><td>Amazon DynamoDB</td><td><code>n5528712-a3-game</code>, on-demand, SSE, TTL on <code>ttl</code>, sparse GSI <code>GSI1</code> (§3.4).</td></tr>
+<tr><td>Configuration and secrets</td><td>Secrets Manager, SSM Parameter Store, environment</td><td>The HMAC key that signs anonymous player IDs is a generated Secrets Manager secret, read by tasks at start-up with the task role. The CloudFront→ALB header value is an SSM SecureString. All other settings are task-definition environment variables. The image contains no credentials or secrets.</td></tr>
+<tr><td>Monitoring</td><td>Amazon CloudWatch</td><td>JSON logs. Custom metrics through the Embedded Metric Format (namespace <code>n5528712/A3Game</code>: occupancy, humans, entities, tick p50/p99, snapshot bytes, worlds started/ended, events dropped). Dashboard <code>n5528712-a3</code>. Five alarms (DLQ not empty, worker errors, queue backlog, unhealthy targets, slow tick). CloudFront additional metrics (cache hit rate).</td></tr>
+</table>
+
+<h2 id="aws-constraints">3.2 Account constraints and how the design adapted</h2>
+<p>The shared CAB432 account applies explicit IAM deny policies to the student role. They were discovered during
+deployment, recorded in <code>docs/current-state.md</code>, and each forced a concrete design change:</p>
+<table>
+<tr><th style="width:27%">Denied action (verified)</th><th style="width:30%">Consequence</th><th>Adaptation</th></tr>
+<tr><td><code>iam:CreateRole</code></td><td>Roles can't be defined in the templates.</td><td>The pre-provisioned <code>Execution-Role-CAB432-ECS</code>, <code>Task-Role-CAB432-ECS</code> and <code>CAB432-Lambda-Role</code> are used. Their policies can't be read, so least privilege can't be demonstrated (a stated limitation). Features were verified empirically: SQS send, Secrets Manager read and task protection from tasks; SQS consume and DynamoDB from Lambda.</td></tr>
+<tr><td><code>ec2:CreateSecurityGroup</code></td><td>No dedicated SGs restricting the ALB to CloudFront or the tasks to the ALB.</td><td>The shared <code>CAB432SG</code> is used. Compensating controls: (1) tasks in <b>private subnets with no public IP</b>, so they are unreachable from the internet; (2) the ALB forwards only requests carrying the secret header that only CloudFront adds. Direct ALB requests receive 403 <span class="ev">[E19]</span>.</td></tr>
+<tr><td><code>acm:RequestCertificate</code></td><td>No TLS certificate for an ALB origin hostname.</td><td>Viewer ↔ CloudFront is HTTPS/WSS. CloudFront ↔ ALB is HTTP (a documented residual risk; with a certificate the origin policy would change to <code>https-only</code>).</td></tr>
+<tr><td><code>s3:DeleteBucket</code>, <code>s3:PutEncryptionConfiguration</code>, <code>s3:PutLifecycleConfiguration</code></td><td>The first data-stack deployment could not roll back its bucket (<code>ROLLBACK_FAILED</code>).</td><td>Buckets are created idempotently by <code>ensure-buckets.sh</code> and referenced by the stacks. Default SSE-S3 encryption still applies. New buckets have S3 attribute-based access control, so tags are applied with <code>s3control tag-resource</code>.</td></tr>
+<tr><td><code>logs:DeleteLogGroup</code>, <code>logs:PutRetentionPolicy</code></td><td>Same rollback problem; retention can't be set.</td><td>Log groups are created by script. Retention stays at the default (a cost note in §5).</td></tr>
+<tr><td><code>lambda:GetFunction</code> on not-yet-existing functions</td><td>CloudFormation's Lambda resource handler fails before creating the function.</td><td>Functions, the ALB invoke permission and the SQS event source mapping are created or updated by <code>deploy-lambdas.sh</code> (tagged <code>create-function</code> is permitted). The stack references the function ARN.</td></tr>
+</table>
+
+<h2 id="aws-sec">3.3 Security</h2>
+<ul>
+  <li><b>Public vs private access.</b> Only CloudFront is a public entry point. S3 is OAC-only (direct URL → 403). The ALB answers 403 without the origin secret. Tasks have no public IP <span class="ev">[E2, E19]</span>.</li>
+  <li><b>Transport.</b> HTTPS/WSS between player and edge, with HTTP redirected to HTTPS. The internal hop is discussed in §3.2.</li>
+  <li><b>Untrusted clients.</b> The server accepts only four message types (<code>join</code>, <code>in</code>, <code>respawn</code>, <code>ping</code>), validates every field (finite numbers, ranges, UUID/hex formats), caps message size at 1 KB, sanitises and truncates display names to 16 characters (rendered with <code>textContent</code>), rate-limits each socket with a token bucket (40 msg/s, sustained abuse closes the socket), and ignores any position, score or length a client sends. Unit and integration tests cover forged fields and malformed JSON.</li>
+  <li><b>Identity without accounts.</b> Anonymous player IDs are server-generated UUIDs signed with an HMAC key held in Secrets Manager. A client presenting an ID with a wrong signature gets a fresh ID, so leaderboard entries can't be hijacked (test: <i>"forged id is replaced"</i>).</li>
+  <li><b>Credentials.</b> No access keys exist anywhere: tasks and functions use IAM roles, and deploy scripts use the operator's SSO session.</li>
+</ul>
+
+<h2 id="aws-data">3.4 Data model</h2>
+<table>
+<tr><th>Entity</th><th>PK</th><th>SK</th><th>Notable attributes</th></tr>
+<tr><td>Player profile</td><td><code>PLAYER#&lt;id&gt;</code></td><td><code>PROFILE</code></td><td>displayName, bestScore, deaths, kills, sessions, playMs. <code>GSI1PK='LB'</code>, <code>GSI1SK=bestScore</code> written only once a score exists (sparse index).</td></tr>
+<tr><td>Death record</td><td><code>PLAYER#&lt;id&gt;</code></td><td><code>DEATH#&lt;time&gt;#&lt;eventId&gt;</code></td><td>score, length, kills, killedBy, survivedMs, worldId</td></tr>
+<tr><td>World record</td><td><code>WORLD#&lt;worldId&gt;</code></td><td><code>META</code></td><td>start/end times, humans, NPCs, lobby wait, peak humans, end reason</td></tr>
+<tr><td>Idempotency marker</td><td><code>EVENT#&lt;eventId&gt;</code></td><td><code>EVENT</code></td><td>type, processedAt, <code>ttl</code> = now + 7 days</td></tr>
+</table>
+<p>Access patterns: leaderboard = <code>Query GSI1 (GSI1PK='LB', descending, Limit N)</code>; player stats =
+<code>GetItem</code>; history = <code>Query PK, begins_with(SK,'DEATH#')</code>. No access pattern uses a Scan. The leaderboard
+partition key is a single value. At far more than this project's write rate (≫1,000 writes/s) it would be
+write-sharded (<code>LB#0..n</code>) and merged on read.</p>
+
+<h2 id="aws-iac">3.5 Infrastructure as code and observability</h2>
+<p>Four CloudFormation stacks (<code>data</code>, <code>backend</code>, <code>frontend</code>, <code>monitoring</code>) plus idempotent
+CLI scripts reproduce the deployment with one command (<code>infra/scripts/deploy.sh</code>). All parameters come from
+environment variables, and every taggable resource carries <code>purpose = assessment 3</code> and
+<code>qut-username = n5528712@qut.edu.au</code>. The data stack uses <code>DeletionPolicy: Retain</code> and is separate from
+compute, so the backend can be torn down without losing results. (The DynamoDB table survived an early failed
+stack and was <i>imported</i> into the new stack rather than deleted.)</p>
+<p>Game tasks emit one JSON log line per event with <code>taskId</code>, <code>worldId</code>, <code>playerId</code> and
+<code>eventId</code>, so a single event can be followed from <code>event_published</code> in the game log to
+<code>event_processed</code> in the worker log. Custom metrics use the Embedded Metric Format: a JSON line every 10 s
+that CloudWatch Logs converts into metrics, so no metrics API permission or SDK is needed. The metric dimension is
+the service name only, so the <i>Average</i> across tasks is the fleet-wide value the scaling policy consumes.</p>
+
+<!-- ================================================================ 4 APPLICATION -->
+<h1 id="app">4 Application implementation</h1>
+
+<h2 id="app-reuse">4.1 From a single-player tutorial to an authoritative server</h2>
+<p>The original game delegated motion to P2 physics: the head was moved with <code>moveForward</code>, its positions
+were pushed into a <code>headPath</code>, each of 30 body sections was placed on that path about <code>17 × scale</code>
+behind the previous one, and an invisible "edge" circle locked in front of the head killed the snake when it
+touched another snake's body. P2 is coupled to Phaser sprites and cannot run headless. The server therefore
+re-implements the same model directly (<code>server/src/game/snake.js</code>): the same constants (start scale 0.6,
+30 sections, 130/200 px/s, a turn rate of 2 rad/s derived from P2's <code>rotateLeft(40)</code> and its px→m factor of 20,
+growth ×1.01 per food), arc-length placement of sections along the head path, and an edge-point collision test.
+A spatial hash grid makes collision and food queries local. A full 50-snake world ticks in about 0.3 ms on a laptop
+core and the 37 server tests pin the behaviour down.</p>
+<p>The NPCs keep the original bot's "trend" wander (keep turning one way, flip with probability 1/20) and add three
+priorities: stay inside the arena, avoid bodies and approaching heads, and seek nearby food. Instrumenting deaths
+during development showed that 69 % of NPC deaths were head-to-head collisions while chasing the same food. Adding
+an "approaching head" check raised median NPC lifetime from 15 s to 23 s, and that was judged sufficient
+(the brief asks not to over-engineer AI).</p>
+<p>The client keeps the original assets and drawing code (tinted circle sections, the <code>shadow.js</code> light-up
+effect while boosting, and the eye pair) but now only renders server state. Because <code>circle.png</code> is solid red,
+tinting could only produce reds. The client desaturates it once at start-up into a white texture, which keeps the
+original outline shading and lets each snake take any colour.</p>
+<table>
+<tr><th>Original (client-authoritative)</th><th>Now</th></tr>
+<tr><td>P2 physics in the browser decides position, collisions, eating, growth, death</td><td>Server tick at 30 Hz decides everything. The browser sends heading + boost only.</td></tr>
+<tr><td>1 player + 2 bots, 1,600 × 1,000 px world</td><td>≤4 humans + NPCs = 50 snakes, circular arena of radius 2,400 px, 700 ambient food</td></tr>
+<tr><td>Food pulled into the head by a revolute constraint</td><td>Head–food overlap test. Food deltas are applied on the client at the snapshot's render time.</td></tr>
+<tr><td>No identity, score or leaderboard</td><td>Signed anonymous ID, score, in-world top 10, persistent all-time top 10</td></tr>
+</table>
+
+<h2 id="app-flows">4.2 Workflows</h2>
+<figure><img src="figures/workflows.svg" alt="Workflows" />
+<figcaption>Figure 3. Join/lobby, authoritative gameplay, asynchronous persistence, and the cached leaderboard read, as implemented.</figcaption></figure>
+<p>Each task's <code>Room</code> runs a small state machine: <i>idle</i> → (first human) → <i>lobby</i> → (4 humans or 10 s) →
+<i>running</i> → (last human leaves) → <i>idle</i>. Leaving <i>running</i> discards the world entirely, so an empty task does no
+simulation work (≈3 % CPU, <span class="ev">[E10]</span>). Every tick enforces the slot invariant
+<code>NPCs = 50 − humans</code>: a late joiner removes the smallest NPC, and a departing human is replaced by a new NPC.
+A dead human keeps their slot during the 3 s respawn timer, so the active count briefly reads 49. Unit tests check
+the fill for 1–4 humans (49/48/47/46 NPCs), the ≤10 s lobby, the immediate start at four humans, ROOM_FULL for the
+fifth, late join, and world completion <span class="ev">[E4, E5]</span>.</p>
+
+<h2 id="app-net">4.3 Networking, interest management and bandwidth</h2>
+<p>Snapshots contain only the snakes whose bounding box intersects the player's viewport plus a 350 px margin.
+Each snake is serialised once per snapshot and the fragment reused for every client. Food changes travel as
+deltas. The client buffers snapshots, maps server time to local time using the minimum observed one-way offset,
+and renders 110 ms in the past, interpolating section positions between the two surrounding snapshots.</p>
+<p>Bandwidth was measured, not assumed, and it turned out to be the dominant running cost (§5). Two optimisations
+followed from the measurements, both captured by the load tester:</p>
+<table>
+<tr><th>Version (same 4-player, 40 s run, 0.25 vCPU container)</th><th>Bytes on the wire</th><th>Per player</th><th>Evidence</th></tr>
+<tr><td>Absolute coordinates, JSON</td><td>14.6 MB</td><td>≈ 91 KiB/s</td><td>E14a</td></tr>
+<tr><td>Delta-encoded body points (head absolute, then small offsets)</td><td>8.6 MB (−41 %)</td><td>≈ 54 KiB/s</td><td>E14b</td></tr>
+<tr><td>+ WebSocket permessage-deflate (level 1, context takeover)</td><td>2.3 MB (−74 % vs. delta)</td><td>≈ 14.7 KiB/s</td><td>E17</td></tr>
+</table>
+<p>Compression added about +2.5 points of host-core CPU (≈ +10 points of a 0.25 vCPU task), a good trade because
+egress costs more than compute in this design. Enabling compression also exposed a shutdown bug: sends become
+asynchronous, and the server terminated sockets before the final <code>bye</code> message was flushed. The integration
+test caught it, and shutdown now waits up to 1.5 s for close handshakes.</p>
+
+<h2 id="app-persist">4.4 Asynchronous, idempotent persistence</h2>
+<p>The game loop never waits for the network to persist results. <code>publish()</code> appends an event envelope
+(<code>eventId</code> UUID, type, version, time, worldId, taskId, payload) to an in-memory buffer. A flusher sends batches of
+up to 10 with <code>SendMessageBatch</code>. Rejected entries are retried with exponential backoff and jitter, up to 4
+times, and the buffer is bounded at 5,000 events (oldest dropped). An event that still can't be sent is written
+in full to the log (<code>event_dropped</code>), so it is recoverable. On SIGTERM the buffer is flushed within a deadline.
+In the resilience test the terminating task flushed 206 events with 0 dropped <span class="ev">[E16]</span>.</p>
+<p>SQS standard queues deliver at least once and do not preserve order, so the worker is written for both:</p>
+<ul>
+  <li><b>Idempotency.</b> Non-idempotent changes (incrementing deaths and kills, inserting a death record) run in one
+  <code>TransactWriteItems</code> together with a conditional put of <code>EVENT#&lt;eventId&gt;</code>. A redelivery fails the
+  condition and changes nothing. The best-score update is a conditional "max"
+  (<code>attribute_not_exists(bestScore) OR bestScore &lt; :s</code>), which is idempotent by nature, so it runs <i>before</i>
+  the transaction: a crash between the two can never lose a high score.</li>
+  <li><b>Ordering.</b> World records use <code>SET</code> updates, so <code>WORLD_STARTED</code> and <code>WORLD_COMPLETED</code> commute. In the
+  deployment a <code>PLAYER_DIED</code> was processed before its world's <code>WORLD_STARTED</code> <span class="ev">[E8]</span>, and the result was still correct.</li>
+  <li><b>Poison messages.</b> Schema validation failures and transient errors are both reported as
+  <code>batchItemFailures</code>, so only those records return to the queue. After three receives SQS moves them to the
+  DLQ, which raises an alarm. A deliberately malformed message was rejected three times, 60 s apart (the visibility timeout), then moved to the DLQ, and the <code>dlq-not-empty</code> alarm went to ALARM <span class="ev">[E16]</span>.</li>
+</ul>
+<p>The leaderboard is read by a separate Lambda behind the ALB. It queries the sparse GSI in descending order and
+returns <code>Cache-Control: public, max-age=10</code>. CloudFront therefore answers repeated reads at the edge (§4.7), and
+at most one request per 10 s per edge location reaches DynamoDB, regardless of player count.</p>
+
+<h2 id="app-scale">4.5 Scaling: design and measured behaviour</h2>
+<h3>Choosing the signal from measurements</h3>
+<p>The brief suggested starting with CPU target tracking. Local measurement in a container capped at 0.25 vCPU,
+followed by Fargate measurement, showed why CPU alone can't drive this system. A world can never hold more than four
+humans, so a full world's CPU is bounded: <b>≈20–30 % of a 0.25 vCPU Graviton task</b>, while an idle task sits at
+≈3 % <span class="ev">[E10, E15]</span>. With any sensible CPU target (40–50 %), the service would stay at one task while every world is
+full and new players wait. The scaling question is really "are there free seats?", so the primary policy tracks a
+custom metric, <code>WorldOccupancyPct = humans / 4 × 100</code>, averaged over all tasks, with a target of 75 %. Target
+tracking then keeps <code>tasks ≈ ceil(humans / 3)</code>, about one empty world in four. CPU target tracking at 50 % stays as a
+safety net (for example if world size or NPC count were raised). Application Auto Scaling scales out when either
+policy asks and scales in only when both agree.</p>
+<p>Scale-in must not end games in progress. Each task enables ECS <b>task scale-in protection</b> when its world
+starts (renewed every 5 minutes, expiring after 15 if the process dies) and releases it when the world empties. During
+the test, the four tasks hosting players were protected and the newly started empty task was not
+<span class="ev">[E12]</span>. The autoscaler can therefore only remove empty worlds.</p>
+
+<h3>Scale-out experiment</h3>
+<p>Fourteen synthetic players (<code>load-tests/websocket-load.js</code>) joined through CloudFront
+(<code>wss://…/ws</code>), ramping over 30 s, for 25 minutes. They behave like real clients: they join, retry
+<code>ROOM_FULL</code>, steer with wandering input at 10 Hz, boost occasionally, respawn after dying, and ping every 2 s.
+The load is genuine gameplay. Nothing is a busy loop. Because one world takes four humans, ten players are
+initially rejected, which is exactly the situation the occupancy policy exists for.</p>
+<figure><img src="figures/chart-tasks.svg" alt="Desired vs running tasks" />
+<figcaption>Figure 4. Desired and running tasks (Container Insights, 1-minute maximum). The dip at 12:19 is the deliberate task-failure test (§4.6).</figcaption></figure>
+<figure><img src="figures/chart-occupancy.svg" alt="Occupancy" />
+<figcaption>Figure 5. Fleet-average world occupancy (the scaling metric) and humans placed in worlds. An aborted first run at 12:05–12:06
+appears as the early spike; the measured run starts at 12:07.</figcaption></figure>
+<table>
+<tr><th>Time (AEST)</th><th>Scaling activity (Application Auto Scaling)</th><th>Players in worlds / tasks</th></tr>
+<tr><td>12:07</td><td>Load starts; 1 task, occupancy → 100 %</td><td>4 in world, 10 receiving ROOM_FULL</td></tr>
+<tr><td>12:10:15</td><td>"Setting desired count to 2." Task running and healthy ≈ 40 s later</td><td>8 / 2</td></tr>
+<tr><td>12:12:15</td><td>"Setting desired count to 3."</td><td>12 / 3 (4 + 4 + 4)</td></tr>
+<tr><td>12:15:15</td><td>"Setting desired count to 4."</td><td>14 / 4 (4 + 4 + 4 + 2): every player placed</td></tr>
+<tr><td>12:17:15</td><td>"Setting desired count to 5." Occupancy 14/20 = 70 %, inside the target band, so steady</td><td>14 / 5 (one empty world as headroom)</td></tr>
+<tr><td>⟦SCALE_IN_ROWS⟧</td></tr>
+</table>
+<p>Each step needed three consecutive one-minute datapoints above target plus the 60 s scale-out cooldown, so the
+fleet grew by one world roughly every 2–3 minutes, and the sequence 1→2→3→4→5 followed
+<code>ceil(tasks × occupancy / 75)</code>. New tasks were registered and healthy 30–45 s after each decision. Across the run the
+load tester recorded <b>0 connection errors</b>, WebSocket RTT <b>p50 16 ms / p95 ⟦RTT_P95⟧ ms</b> from Brisbane via the
+BNE edge, and a snapshot interval of p50 67 ms (15 Hz) <span class="ev">[E14]</span>. Per-task CPU stayed at 20–30 % and the p99 tick
+time stayed under ⟦TICK_P99⟧ ms of the 33 ms budget <span class="ev">[E15]</span>.</p>
+<p><b>Load distribution.</b> The ALB uses round robin for new connections. Combined with <code>ROOM_FULL</code> and client
+retry, this acts as simple decentralised matchmaking: the load tester's per-task counts show players spread evenly
+over the new worlds as they appeared (4/4/4/2) <span class="ev">[E14]</span>, with targets healthy in all three AZs <span class="ev">[E13]</span>.</p>
+<figure><img src="figures/chart-cpu.svg" alt="CPU and memory" />
+<figcaption>Figure 6. ECS service CPU and memory utilisation: a full world uses ≈20–30 % of its 0.25 vCPU allocation and ≈10 % of 512 MB.</figcaption></figure>
+
+<h2 id="app-res">4.6 Resilience</h2>
+<table>
+<tr><th style="width:24%">Failure</th><th>What happened (measured)</th></tr>
+<tr><td>Game task lost during play (task stopped while hosting 4 players)</td><td>12:18:17 stop issued. 12:18:59 target deregistered and a replacement task started. ≈12:19:15 the ALB closed the four WebSockets at the end of the 15 s deregistration delay. All four players rejoined other worlds within one 5 s sample (two filled a world with free seats, two went to the idle headroom world). The old task completed its world, published four <code>SESSION_ENDED</code> events, received SIGTERM at 12:19:24, flushed <b>206 events with 0 dropped</b> and exited with code 0. The replacement was healthy at 12:19:28 and the service reached a steady state at 12:19:47 <span class="ev">[E16]</span>.</td></tr>
+<tr><td>Poison message</td><td>Received three times, 60 s apart, logged as <code>event_malformed</code> each time, then moved to the DLQ. The DLQ alarm fired <span class="ev">[E16]</span>.</td></tr>
+<tr><td>Duplicate or out-of-order delivery</td><td>Idempotency marker and commutative updates (unit-tested; out-of-order delivery observed in production) <span class="ev">[E8]</span>.</td></tr>
+<tr><td>Transient AWS errors</td><td>Publisher: per-entry retry with exponential backoff and jitter, bounded at 4 attempts and a 5,000-event buffer. Worker: the failed record returns to the queue (unit-tested).</td></tr>
+<tr><td>Hung tick loop</td><td><code>/health</code> fails if no tick for 2 s. The container health check and ECS replace the task.</td></tr>
+<tr><td>Full worlds</td><td>Client: five fast jittered retries, then bounded exponential backoff (≤5 s) for ~3 minutes, never forever. The load test verified that waiting players were seated as capacity arrived.</td></tr>
+</table>
+<p>One finding changed the understanding of graceful shutdown. Because ECS drains the ALB target <i>before</i> sending
+SIGTERM, the ALB, not the application, ends WebSocket sessions when the deregistration delay expires. The server's
+<code>bye</code> message is only delivered when the process itself initiates shutdown. Resilience therefore rests on the
+client's reconnect path, and the measurement shows that path is fast.</p>
+
+<h2 id="app-cache">4.7 Edge caching</h2>
+<p><code>tests/cache-test.sh</code> requested the same objects five times from Brisbane <span class="ev">[E6]</span>:</p>
+<table>
+<tr><th>Object</th><th>Origin</th><th>Result</th></tr>
+<tr><td><code>app.&lt;hash&gt;.js</code> (immutable, 1 year)</td><td>S3 via OAC</td><td><code>Hit from cloudfront</code> on every request, <code>Age</code> 41 → 45 s, ≈20 ms, POP BNE50</td></tr>
+<tr><td><code>/api/leaderboard?limit=10</code> (10 s TTL)</td><td>ALB → Lambda → DynamoDB</td><td>First request <b>Miss, 615 ms</b>; then <b>Hit, 18–31 ms</b> with <code>Age</code> 1 → 4 s</td></tr>
+<tr><td><code>index.html</code> (no-cache)</td><td>S3</td><td><code>RefreshHit</code>: revalidated each time, so new deployments go live immediately</td></tr>
+</table>
+<p>Content hashing makes the long TTL safe: a new build produces new file names, and only <code>index.html</code> is
+invalidated on deploy. The cached API means the leaderboard costs at most one Lambda invocation and one DynamoDB
+query per 10 s per edge location, however many players open the join screen.</p>
+
+<h2 id="app-test">4.8 Testing</h2>
+<ul>
+  <li><b>Unit (deterministic, seeded PRNG):</b> movement constants, turn rate, path spacing, growth, eating,
+  collision and boundary death, food drop, NPC fill for 1–4 humans, lobby timing, ROOM_FULL, late join, world
+  completion, respawn, area-of-interest culling, delta encoding, drain, signed IDs, message validation, rate
+  limiting, publisher retry/bounds/flush. Lambda: idempotency, poison messages, partial batch failure, transient
+  errors, commutative world events, DynamoDB command shapes (no Scan), API validation.</li>
+  <li><b>Integration:</b> real <code>ws</code> clients against the real server, covering shared world, 50 entities, forged and
+  malformed input, ping, ROOM_FULL close code, join timeout and graceful shutdown.</li>
+  <li><b>Smoke:</b> <code>tests/smoke.sh</code> checks the deployed system through CloudFront, including a real WebSocket session ⟦SMOKE_RESULT⟧.</li>
+  <li><b>Load / scaling / resilience:</b> §4.5–4.6.</li>
+</ul>
+<p>Result: <b>50/50 automated tests pass</b> (37 server, 13 Lambda) <span class="ev">[E18]</span>.</p>
+
+<!-- ================================================================ 5 COST -->
+<h1 id="cost">5 Cost and sustainability</h1>
+<h2>5.1 Measured cost drivers</h2>
+<p>Unit prices are on-demand Sydney / CloudFront-Australia rates read from the AWS public price-list files on
+19 Oct 2026. (The Price List API is denied to the student role; free tier is ignored.) Resource quantities come from
+the deployment and the load tests.</p>
+<table>
+<tr><th>Driver</th><th>Measured</th><th>Unit price</th><th>Cost per player-hour</th></tr>
+<tr><td>Fargate task (0.25 vCPU, 0.5 GB, ARM)</td><td>1 task per ≤4 humans (×1/0.75 headroom)</td><td>$0.03885 vCPU-h + $0.00426 GB-h = <b>$0.011843/task-h</b></td><td>≈ $0.0039</td></tr>
+<tr><td>Snapshot egress via CloudFront</td><td>54 KiB/s per player before compression; 14.7 KiB/s after</td><td>$0.114/GB (AU, first 10 TB)</td><td>≈ $0.022 → <b>≈ $0.006</b></td></tr>
+<tr><td>ALB processed bytes (1 LCU = 1 GB/h)</td><td>same bytes as egress</td><td>$0.008/LCU-h (+ $0.0252/h fixed)</td><td>≈ $0.0004 after compression</td></tr>
+<tr><td>Events (SQS + Lambda + DynamoDB)</td><td>a few events per real player-minute, batched by 10</td><td>$0.40/M SQS, $0.20/M Lambda, $0.71/M WRU</td><td>&lt; $0.0002</td></tr>
+</table>
+<p>Two conclusions shaped the implementation. First, <b>egress, not compute, dominates</b>. That justified delta
+encoding and permessage-deflate (§4.3), which together cut wire bytes by ~85 % and took the total cost per player-hour
+from ≈ $0.026 to ≈ $0.011. Second, the per-player compute cost is fixed by the world size (one 0.25 vCPU task per
+four seats), so the occupancy target is the main cost lever: 75 % keeps one empty world in four as joining headroom.</p>
+
+<h2>5.2 Scenario estimate</h2>
+<p>For a modest public deployment averaging <b>60 concurrent humans</b> (peak 200), 24×7:</p>
+<pre>average worlds needed  = ceil(60 / 4) = 15        running tasks at 75 % target ≈ ceil(60 / 3) = 20
+peak (200 humans)      = ceil(200 / 4) = 50 worlds → ≈ 67 tasks (MaxTasks raised from the demo cap of 6)</pre>
+<table>
+<tr><th>Component</th><th>Basis</th><th>USD / month</th></tr>
+<tr><td>Fargate</td><td>20 tasks × $0.011843 × 730 h</td><td>172.9</td></tr>
+<tr><td>ALB</td><td>$18.4 fixed + 3.2 LCU × $0.008 × 730</td><td>37.0</td></tr>
+<tr><td>CloudFront egress</td><td>60 × 0.053 GB/h × 730 h = 2,321 GB × $0.114 (compressed)</td><td>264.6</td></tr>
+<tr><td>SQS, Lambda, DynamoDB</td><td>~1.3 M requests, ~0.5 M invocations, ~6.5 M WRU</td><td>≈ 7</td></tr>
+<tr><td>CloudWatch</td><td>11 custom metrics, Container Insights, ~9 alarms, ~10 GB logs</td><td>≈ 14</td></tr>
+<tr><td>ECR, Secrets Manager, S3</td><td></td><td>≈ 0.5</td></tr>
+<tr><th>Total</th><th>≈ $0.011 per player-hour</th><th>≈ 495</th></tr>
+</table>
+<p>Without compression the same scenario would cost ≈ $1,180/month (egress ≈ $949). The minimum floor, at night
+with one idle world, is ≈ $40/month (ALB + one task + monitoring). The exact AWS Pricing Calculator inputs are in
+Appendix D. ⟦PRICING_CALCULATOR_LINK: create the public estimate from Appendix D and paste the link here⟧</p>
+<p class="small">Not included: the account's pre-existing NAT gateways, used only for image pulls and AWS API calls
+(~100 MB per task start); Container Insights at large fleet sizes; data transfer of the ~40 KB client bundle (cached
+in browsers for a year).</p>
+
+<h2>5.3 Sustainability</h2>
+<ul>
+  <li><b>Capacity follows demand.</b> Target tracking on occupancy adds worlds only when players need seats and
+  removes idle ones afterwards (scale-in evidence §4.5). The occupancy target trades a small amount of idle
+  capacity (25 %) for players not waiting.</li>
+  <li><b>Idle worlds do no work.</b> When the last human leaves, the world object is discarded and the tick does
+  nothing: an idle task runs at ≈3 % CPU versus ≈25 % active <span class="ev">[E10, E15]</span>. NPCs never simulate without players.</li>
+  <li><b>Right-sizing from measurement.</b> The smallest Fargate size (0.25 vCPU, 0.5 GB) was kept because a full
+  world used ≈20–30 % CPU and ≈25 MB of memory, with p99 tick time well inside the 33 ms budget.</li>
+  <li><b>Graviton (ARM64)</b> for both Fargate and Lambda: AWS states better energy efficiency per unit of work than
+  comparable x86, at 20 % lower price here.</li>
+  <li><b>Less data moved.</b> Area-of-interest culling, delta encoding and compression cut bytes per player by ~85 %
+  relative to the first version. Moving fewer bytes means less network energy as well as lower cost.</li>
+  <li><b>Edge caching.</b> Fingerprinted assets are cached for a year in browsers and at the edge, and the
+  leaderboard for 10 s, so repeat requests never reach S3, the ALB, Lambda or DynamoDB <span class="ev">[E6]</span>.</li>
+  <li><b>Managed and serverless</b> components (Fargate, Lambda, SQS, DynamoDB on-demand) consume nothing while idle,
+  instead of always-on instances sized for peak.</li>
+</ul>
+
+<!-- ================================================================ 6 REFLECTION -->
+<h1 id="reflect">6 Reflection</h1>
+<div class="note">⟦STUDENT TO PERSONALISE⟧ This section records what actually happened in the project, taken from the
+repository history, logs and evidence. Because most implementation work was AI-assisted (see the declaration),
+rewrite it in your own voice and add your own learning before submission. Do not keep claims you can't stand behind.</div>
+
+<h2>6.1 Topics that went beyond the practical material</h2>
+<table>
+<tr><th style="width:20%">Topic</th><th style="width:26%">Initially unknown</th><th style="width:26%">What was investigated / what happened</th><th>Effect on the design</th></tr>
+<tr><td>Scaling signal for stateful worlds</td><td>Whether ECS CPU target tracking (the usual starting point) would react to game load.</td><td>Measured a full world (4 players + 46 NPCs) at ≈20–30 % of a 0.25 vCPU Graviton task. Per-world CPU is bounded by design (≤4 humans), so a 40–50 % CPU target would never fire.</td><td>A custom <code>WorldOccupancyPct</code> metric via EMF became the primary target-tracking signal, with CPU kept as a safety net. Scale-out was then reproducible (1→5 tasks).</td></tr>
+<tr><td>ECS task scale-in protection</td><td>How to stop scale-in from terminating a world with players.</td><td>Used the ECS agent endpoint (<code>$ECS_AGENT_URI/task-protection/v1/state</code>), enabled when a world starts and renewed every 5 min.</td><td>Verified: active tasks protected, idle task not (E12).</td></tr>
+<tr><td>ALB draining vs. SIGTERM for WebSockets</td><td>Assumed the server's SIGTERM handler would tell clients to reconnect.</td><td>The task-stop test showed ECS deregisters the target first, and the ALB closes long-lived WebSockets when the 15 s deregistration delay ends, about 10 s <i>before</i> SIGTERM. The <code>bye</code> message is never delivered for ALB-terminated connections.</td><td>Resilience comes from the client's reconnect path (verified: rejoin within one 5 s sample). Improvement: poll target health from the task to start draining earlier.</td></tr>
+<tr><td>Account guardrails and CloudFormation</td><td>Which resource types the student role may create and delete.</td><td>Hit explicit denies one by one: stacks stuck in <code>ROLLBACK_FAILED</code> (undeletable buckets and log groups), early-validation failures, and CloudFormation's Lambda handler failing on <code>GetFunction</code> for a not-yet-existing function.</td><td>Split "what may not be deleted" out of CloudFormation into idempotent scripts. Imported a retained DynamoDB table into the new stack. Documented every workaround (§3.2).</td></tr>
+<tr><td>Bandwidth as a cost driver</td><td>Expected compute to dominate.</td><td>Public price list + measured bytes showed CloudFront egress (≈$0.022/player-hour) far above Fargate (≈$0.003/player-hour).</td><td>Delta encoding (−41 %) and permessage-deflate (−74 %). Compression also exposed a shutdown-flush bug, now fixed and tested.</td></tr>
+<tr><td>At-least-once, unordered delivery</td><td>How to make score aggregation safe under redelivery.</td><td>DynamoDB transactions with a conditional idempotency marker; an idempotent "max" for best score; commutative world updates.</td><td>Out-of-order delivery happened in production and the data stayed correct (E8).</td></tr>
+</table>
+
+<h2>6.2 What failed and what changed</h2>
+<ul>
+  <li>The first NPC brain let NPCs die every ~15 s. Death-cause instrumentation (rather than guessing) found
+  head-to-head collisions while chasing the same food, and a targeted fix raised median lifetime to 23 s.</li>
+  <li>A growth bug left the newest tail section <code>undefined</code> for one tick. It serialised as <code>null</code> and was
+  drawn at (0, 0). It was found by checking rendered snake extents in the browser, fixed in <code>grow()</code>,
+  and covered by a regression test.</li>
+  <li>The first load test gave up on <code>ROOM_FULL</code> after ~2 minutes, before auto-scaling could add capacity
+  (~3 min of alarm datapoints + ~1 min of task start). The retry policy became "five fast jittered attempts, then
+  bounded exponential backoff for ~3 minutes", in both the browser and the load tester.</li>
+  <li>Two players in the same browser share <code>localStorage</code>, hence the same player ID. An early "replace the
+  older connection" rule would have made two tabs evict each other in a loop, so it was removed.</li>
+</ul>
+
+<h2>6.3 What I would do differently</h2>
+<ul>
+  <li>Check account permissions <i>before</i> writing templates (a scripted probe of create/delete/tag actions), rather than discovering denies through failed stacks.</li>
+  <li>Add predictive or scheduled scaling for known peaks. Target tracking needs ~3 minutes of datapoints, so a sudden rush waits a few minutes for new worlds.</li>
+  <li>Use a binary snapshot format and a 10 Hz snapshot rate before reaching for compression, and measure the CPU/egress trade-off on Fargate itself.</li>
+  <li>Request a certificate (or use a VPC origin) so the CloudFront→ALB hop is encrypted, and use dedicated security groups once permitted.</li>
+</ul>
+
+<!-- ================================================================ REFERENCES -->
+<h1 id="refs">References</h1>
+<ul class="small">
+<li>Amazon Web Services. (2026). <i>Amazon ECS service auto scaling: target tracking scaling policies</i>. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-autoscaling-targettracking.html</li>
+<li>Amazon Web Services. (2026). <i>Protect your Amazon ECS tasks from being terminated by scale-in events</i>. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-scale-in-protection.html</li>
+<li>Amazon Web Services. (2026). <i>Specification for the CloudWatch embedded metric format</i>. https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html</li>
+<li>Amazon Web Services. (2026). <i>Using WebSockets with CloudFront distributions</i>. https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-working-with.websockets.html</li>
+<li>Amazon Web Services. (2026). <i>Restricting access to an Amazon S3 origin (origin access control)</i>. https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html</li>
+<li>Amazon Web Services. (2026). <i>Restricting access to Application Load Balancers (custom origin header)</i>. https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html</li>
+<li>Amazon Web Services. (2026). <i>Using Lambda with Amazon SQS: reporting batch item failures</i>. https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-errorhandling.html</li>
+<li>Amazon Web Services. (2026). <i>Using dead-letter queues in Amazon SQS</i>. https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html</li>
+<li>Amazon Web Services. (2026). <i>Amazon DynamoDB transactions and condition expressions</i>. https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transactions.html</li>
+<li>Amazon Web Services. (2026). <i>Using global secondary indexes in DynamoDB (sparse indexes)</i>. https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-indexes-general-sparse-indexes.html</li>
+<li>Amazon Web Services. (2026). <i>Target groups for your Application Load Balancers: deregistration delay</i>. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html</li>
+<li>Amazon Web Services. (2026). <i>AWS Price List bulk API offer files</i> (AmazonECS, AWSELB, AmazonCloudFront, AWSLambda, AWSQueueService, AmazonDynamoDB, AmazonCloudWatch; ap-southeast-2; retrieved 19 Oct 2026). https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json</li>
+<li>Amazon Web Services. (2026). <i>AWS Well-Architected Framework: Sustainability Pillar</i>. https://docs.aws.amazon.com/wellarchitected/latest/sustainability-pillar/</li>
+<li>Fette, I., &amp; Melnikov, A. (2011). <i>The WebSocket Protocol</i> (RFC 6455). IETF.</li>
+<li>Yoshino, T. (2015). <i>Compression Extensions for WebSocket</i> (RFC 7692). IETF.</li>
+<li>Gambetta, G. (2017). <i>Fast-paced multiplayer: entity interpolation</i>. https://www.gabrielgambetta.com/entity-interpolation.html</li>
+<li>Loonride. (2017). <i>How to make Slither.io with JavaScript</i> [Source code and tutorial]. https://github.com/Loonride/slither.io-clone</li>
+<li>Photon Storm. (2016). <i>Phaser CE 2.6.2</i> [JavaScript game framework]. https://phaser.io</li>
+<li>websockets/ws contributors. (2026). <i>ws: a Node.js WebSocket library</i> (v8). https://github.com/websockets/ws</li>
+</ul>
+
+<!-- ================================================================ APPENDICES -->
+<h1 id="appx">Appendices</h1>
+<h2>Appendix A. Assessment pattern matrix</h2>
+<p>Evidence IDs (E#) refer to <code>docs/evidence-register.md</code>. Report sections: §2 Vendor-agnostic architecture,</p>
+<p>§3 Vendor-specific implementation, §4 Application implementation, §5 Cost and sustainability.</p>
+<table><tr><th>#</th><th>Pattern</th><th>Why this application needs it</th><th>Implementation</th><th>AWS service</th><th>How it is tested</th><th>Evidence</th><th>Report §</th><th>Demo</th></tr><tr><td>P1</td><td>Structured persistence</td><td>Scores, deaths and the leaderboard must survive task loss and be queried by key or rank.</td><td>Single table + sparse GSI leaderboard. Idempotent transactional writes.</td><td>DynamoDB</td><td>Unit tests of the worker against an in-memory store. Deployed: die in game, then query the item and the GSI.</td><td>E9</td><td>§3, §4</td><td>1:55–2:35</td></tr><tr><td>P2</td><td>Object storage</td><td>Frontend build and sprites need durable, cheap hosting with no servers.</td><td>Private bucket, OAC-only policy, cache headers set per object.</td><td>S3</td><td><code>aws s3 ls</code>. Direct S3 URL returns 403. CloudFront URL returns 200.</td><td>E2</td><td>§3</td><td>0:00</td></tr><tr><td>P3</td><td>Edge caching</td><td>Static assets and leaderboard reads should not hit the origin every time.</td><td>Fingerprinted assets (1-year immutable). <code>/api/leaderboard</code> 10 s TTL.</td><td>CloudFront</td><td><code>tests/cache-test.sh</code> shows <code>X-Cache: Miss</code> then <code>Hit</code>, and <code>Age</code> increasing. CloudFront cache statistics.</td><td>E6</td><td>§3, §5</td><td>1:20–1:55</td></tr><tr><td>P4</td><td>Realtime communication</td><td>15 Hz state to many clients plus low-latency input.</td><td><code>ws</code> server, JSON protocol, interest management, client interpolation, ping/RTT.</td><td>ALB + CloudFront WebSocket support</td><td>Integration test (two clients share a world). Load test RTT percentiles.</td><td>E1, E3, E14</td><td>§4</td><td>0:30–1:20</td></tr><tr><td>P5</td><td>Async service communication</td><td>DB writes must not block the tick loop. Bursts and outages must not lose results.</td><td>Batched <code>SendMessageBatch</code> with bounded retry. Graceful flush on SIGTERM.</td><td>SQS (+ DLQ)</td><td>Unit test of publisher retry. Deployed: queue metrics plus worker logs.</td><td>E7, E8</td><td>§3, §4</td><td>1:55–2:35</td></tr><tr><td>P6</td><td>Container compute</td><td>Long-running stateful simulation holding WebSockets.</td><td>Node 22 Alpine image, non-root, healthcheck, arm64.</td><td>ECS Fargate, ECR</td><td><code>docker run</code> local test. ECS running tasks.</td><td>E10, E12</td><td>§3</td><td>3:50</td></tr><tr><td>P7</td><td>Serverless compute</td><td>Event consumption and the read API are bursty and should scale to zero.</td><td>Event worker (SQS ESM, partial batch failure). Leaderboard API (ALB target).</td><td>Lambda</td><td>Unit tests. CloudWatch invocations/errors. Lambda logs.</td><td>E8, E15</td><td>§3</td><td>2:00</td></tr><tr><td>P8</td><td>Non-Lambda auto-scaling</td><td>More humans need more worlds (<code>ceil(humans/4)</code>).</td><td>Target tracking on occupancy (custom metric) and CPU. Scale-in protection for active worlds.</td><td>ECS Service Auto Scaling</td><td>Load test raises desired tasks from 1 to N. Scale-in after load stops.</td><td>E10, E11, E12, E15</td><td>§3, §4</td><td>2:35–3:50</td></tr><tr><td>P9</td><td>Load distribution (dispatcher push)</td><td>New connections must spread across worlds. Full worlds must be skipped.</td><td>ALB round-robin + <code>ROOM_FULL</code> jittered retry.</td><td>ALB</td><td>Load test reports the distribution of clients per <code>taskId</code>. Healthy targets.</td><td>E13, E14</td><td>§3, §4</td><td>3:50–4:30</td></tr><tr><td>P10</td><td>Stateful authoritative world</td><td>Fairness and integrity: clients only send intent.</td><td>30 Hz deterministic tick, collisions on a spatial grid, server-side scoring.</td><td>ECS task memory</td><td>Unit tests (movement, growth, death, food). Integration test that forged messages are ignored.</td><td>E1, E4</td><td>§2, §4</td><td>0:30</td></tr><tr><td>P11</td><td>Horizontal scaling by independent worlds</td><td>Avoid distributed realtime state.</td><td>One world per task. No cross-task sync.</td><td>ECS</td><td>Scale-out creates additional worlds with distinct <code>worldId</code>/<code>taskId</code>.</td><td>E11, E12, E14</td><td>§2</td><td>3:00</td></tr><tr><td>P12</td><td>Event-driven processing</td><td>Durable reaction to game outcomes.</td><td><code>PLAYER_DIED</code>, <code>SESSION_ENDED</code>, <code>WORLD_STARTED</code>, <code>WORLD_COMPLETED</code> events with <code>eventId</code>.</td><td>SQS, Lambda</td><td>Logs show eventId flow from server to worker to DynamoDB.</td><td>E7–E9</td><td>§4</td><td>2:10</td></tr><tr><td>P13</td><td>Monitoring and observability</td><td>Scaling decisions and failures must be visible.</td><td>JSON logs, EMF custom metrics, dashboard, alarms.</td><td>CloudWatch</td><td>Dashboard screenshots. <code>aws cloudwatch get-metric-data</code> exports.</td><td>E15</td><td>§3</td><td>throughout</td></tr><tr><td>P14</td><td>Retries and error handling</td><td>Transient AWS errors, duplicates, poison messages.</td><td>Bounded exponential backoff in the publisher. SQS redrive (3 attempts) to DLQ. Idempotency markers.</td><td>SQS, Lambda, DynamoDB</td><td>Inject a malformed event and watch it land in the DLQ. Duplicate eventId applied once (unit test).</td><td>E7, E16</td><td>§4</td><td>optional</td></tr><tr><td>P15</td><td>Microservice separation</td><td>Simulation, persistence and read API scale and fail independently.</td><td>Game service (ECS), event worker (Lambda), leaderboard API (Lambda).</td><td>ECS, Lambda</td><td>Each deploys separately. Failure of one does not stop gameplay.</td><td>E8, E13</td><td>§2</td><td>—</td></tr><tr><td>P16</td><td>Public vs private access</td><td>Minimise attack surface.</td><td>Only CloudFront is public. S3 is OAC-only. ALB only accepts CloudFront (prefix list SG + secret header). Tasks only accept the ALB SG.</td><td>CloudFront, S3, ALB, VPC SGs</td><td>Direct S3 returns 403. Direct ALB without the header returns 403 or times out.</td><td>E2, E13</td><td>§3</td><td>—</td></tr><tr><td>P17</td><td>Managed services</td><td>Single developer, no ops team.</td><td>Fargate, Lambda, DynamoDB, SQS, CloudFront are all managed.</td><td>many</td><td>—</td><td>—</td><td>§2, §5</td><td>—</td></tr><tr><td>P18</td><td>Resilience / reconnect</td><td>Tasks can die or be replaced.</td><td>Client backoff + jitter reconnect. Server graceful SIGTERM drain. ECS + ALB health replacement.</td><td>ECS, ALB</td><td>Stop a task during play: client reconnects to another world. ECS starts a replacement.</td><td>E16</td><td>§4</td><td>4:00</td></tr><tr><td>P19</td><td>Configuration management</td><td>Same image across environments. Secrets outside the image.</td><td>Environment variables in the task definition. SSM SecureString for the token secret. CloudFormation parameters.</td><td>SSM, ECS, CloudFormation</td><td>Inspect the task definition. Image contains no secrets (<code>docker history</code>).</td><td>E10</td><td>§3</td><td>—</td></tr><tr><td>P20</td><td>Infrastructure as code</td><td>Reproducibility.</td><td>CloudFormation stacks + deploy scripts.</td><td>CloudFormation</td><td>Stack create/update from a clean state.</td><td>inventory</td><td>§3</td><td>—</td></tr></table>
+<h2>Appendix B. Evidence register</h2>
+<p>Every report claim maps to an item here. Files are under <code>evidence/</code>. Times are UTC (Brisbane = UTC+10).</p>
+<p>"Screenshot" items are listed in <code>evidence/screenshots-needed.md</code> for the student to capture.</p>
+<p>Status: ✅ captured · ⏳ pending capture · 📸 needs a console screenshot.</p>
+<table><tr><th>ID</th><th>What it proves</th><th>Command / test</th><th>When (UTC)</th><th>AWS resource</th><th>Result</th><th>Screenshot?</th><th>Report §</th><th>Video</th></tr><tr><td>E1</td><td>Local multiplayer: two real browser clients share one authoritative world</td><td><code>npm run dev</code>, two browser tabs, <code>GET /status</code>. Integration test <code>server/test/integration.test.js</code></td><td>2026-10-19 01:01</td><td>local</td><td>✅ <code>/status</code>: <code>humans 2, npcs 48, worldId Maclan-1</code>. Both tabs on <code>world Maclan-1</code>. Integration test: both clients get the same <code>worldId</code>, 50 entities</td><td>Optional</td><td>§4</td><td>—</td></tr><tr><td>E2</td><td>Deployed frontend over CloudFront; S3 is private</td><td><code>tests/smoke.sh</code>, <code>curl</code> direct S3</td><td>2026-10-19 02:01</td><td>CloudFront <code>d3riy98bj197ur.cloudfront.net</code>, S3 <code>n5528712-a3-frontend-901444280953</code></td><td>✅ index 200 via CloudFront. Direct S3 URL <b>403</b></td><td>📸 app in browser</td><td>§3</td><td>0:00</td></tr><tr><td>E3</td><td>WebSocket multiplayer through CloudFront → ALB → ECS</td><td><code>load-tests/websocket-load.js --clients 2</code> via <code>wss://…/ws</code></td><td>2026-10-19 02:01</td><td>ALB <code>n5528712-a3-alb</code>, service <code>n5528712-a3-game</code></td><td>✅ 2/2 joined, RTT p50 19 ms / p95 61 ms, snapshot interval p50 67 ms</td><td>📸 two windows</td><td>§4</td><td>0:30</td></tr><tr><td>E4</td><td>50-entity world (humans + NPC fill)</td><td>unit tests <code>room.test.js</code> ("NPC fill is 50 − humans for 1..4 humans"); <code>/status</code></td><td>2026-10-19</td><td>ECS task</td><td>✅ 1→49, 2→48, 3→47, 4→46 NPCs (tests). Deployed <code>/status</code> entities 50</td><td>—</td><td>§4</td><td>0:30</td></tr><tr><td>E5</td><td>Lobby ≤10 s; starts immediately at 4 humans; ROOM_FULL for the 5th</td><td>unit tests + integration test; deployed lobby</td><td>2026-10-19</td><td>ECS task</td><td>✅ starts by 10 s (timer) or instantly when full. 5th client: <code>ROOM_FULL</code>, close 4001</td><td>📸 lobby countdown</td><td>§4</td><td>0:15</td></tr><tr><td>E6</td><td>CloudFront cache MISS → HIT</td><td><code>tests/cache-test.sh … 5</code> → <code>evidence/aws/E6-cache-test.txt</code></td><td>2026-10-19 02:02</td><td>CloudFront, POP BNE50</td><td>✅ asset Hit (Age 41→45 s, ~20 ms). API Miss 615 ms → Hit 18–31 ms. index.html RefreshHit (no-cache)</td><td>📸 optional</td><td>§3, §5</td><td>1:20</td></tr><tr><td>E7</td><td>SQS carries game events; queue drains; DLQ catches poison messages</td><td>queue depths; <code>E16-dlq-test.txt</code></td><td>2026-10-19 02:02 / 02:08</td><td>SQS <code>n5528712-a3-events</code>, <code>…-dlq</code></td><td>✅ events sent/deleted, depth 0. DLQ result: see E16</td><td>📸 SQS monitoring</td><td>§3, §4</td><td>2:00</td></tr><tr><td>E8</td><td>Lambda consumes events (idempotent, partial batch failures)</td><td>CloudWatch Logs <code>/aws/lambda/n5528712-a3-event-worker</code></td><td>2026-10-19 02:01</td><td>Lambda <code>n5528712-a3-event-worker</code></td><td>✅ <code>event_processed</code> for PLAYER_DIED, WORLD_STARTED, WORLD_COMPLETED, SESSION_ENDED (<code>result: applied</code>)</td><td>📸 log lines</td><td>§4</td><td>2:10</td></tr><tr><td>E9</td><td>DynamoDB stores results; leaderboard via GSI Query</td><td><code>aws dynamodb query --index-name GSI1</code>; <code>/api/leaderboard</code></td><td>2026-10-19 02:02</td><td>DynamoDB <code>n5528712-a3-game</code></td><td>✅ ranked items from GSI1 (no Scan). API serves the same</td><td>📸 table items</td><td>§4</td><td>2:20</td></tr><tr><td>E10</td><td>Single-task baseline</td><td><code>tests/watch-scaling.sh 1 1</code> → <code>E10-baseline-single-task.txt</code></td><td>2026-10-19 02:04</td><td>ECS service</td><td>✅ desired 1, running 1, occupancy 0 %, CPU 2.9 %, min 1 / max 6</td><td>—</td><td>§3</td><td>2:35</td></tr><tr><td>E11</td><td>ECS Service Auto Scaling scale-out under load</td><td>load test 14 players + watcher → <code>E11-scaling-timeline.txt</code>, scaling activities</td><td>⏳</td><td>ECS + Application Auto Scaling</td><td>⏳</td><td>📸 dashboard</td><td>§3, §4</td><td>3:00</td></tr><tr><td>E12</td><td>Multiple running tasks = multiple independent worlds</td><td>ECS service events, load-test task distribution</td><td>⏳</td><td>ECS</td><td>⏳</td><td>📸 Tasks tab</td><td>§4</td><td>3:30</td></tr><tr><td>E13</td><td>ALB healthy targets across AZs</td><td><code>describe-target-health</code></td><td>⏳</td><td>target group <code>n5528712-a3-game-tg</code></td><td>⏳</td><td>📸 targets</td><td>§3</td><td>3:50</td></tr><tr><td>E14</td><td>Load-test results (connections, RTT, distribution)</td><td><code>E14-load-test-scaleout.json/.log</code>; local <code>evidence/local/E14*</code></td><td>⏳ / 2026-10-19</td><td>—</td><td>Local: 4 in world, 2 bounced (ROOM_FULL), RTT p50 1 ms. Delta encoding −41 % bytes</td><td>—</td><td>§4, §5</td><td>3:00</td></tr><tr><td>E15</td><td>CloudWatch metrics (CPU, memory, occupancy, tasks, Lambda, SQS, DynamoDB)</td><td><code>collect-evidence.sh</code> → <code>E15-cloudwatch-metrics-*.csv</code>; dashboard</td><td>⏳</td><td>CloudWatch</td><td>⏳</td><td>📸 dashboard</td><td>§3, §5</td><td>throughout</td></tr><tr><td>E16</td><td>Resilience: DLQ after 3 attempts; reconnect after task loss; ECS replacement</td><td>poison message; <code>aws ecs stop-task</code> during load</td><td>⏳</td><td>SQS DLQ, ECS</td><td>⏳</td><td>📸 optional</td><td>§4</td><td>4:00</td></tr><tr><td>E17</td><td>Cost measurements (task size, utilisation, bandwidth per player)</td><td>CloudWatch CPU/memory; snapshot bytes; pricing inputs</td><td>⏳</td><td>—</td><td>⏳</td><td>—</td><td>§5</td><td>—</td></tr><tr><td>E18</td><td>Automated tests pass</td><td><code>npm test</code> → <code>evidence/local/automated-tests.txt</code></td><td>2026-10-19</td><td>—</td><td>✅ 37 server + 13 Lambda tests pass</td><td>—</td><td>§4</td><td>—</td></tr><tr><td>E19</td><td>Security controls</td><td>ALB without header → 403; direct S3 → 403; tasks in private subnets with no public IP; input validation tests</td><td>2026-10-19 01:57</td><td>ALB, S3, ECS</td><td>✅</td><td>—</td><td>§3</td><td>—</td></tr></table>
+<h2>Appendix C. Acceptance test results</h2>
+<p>Run on 2026-10-19 against the deployed system (<code>https://d3riy98bj197ur.cloudfront.net/</code>) and the repository at</p>
+<p>the commit noted in each evidence file. PASS = requirement met with evidence; PARTIAL = met with a stated</p>
+<p>limitation; FAIL = not met.</p>
+<h3>Functional requirements</h3>
+<table><tr><th>ID</th><th>Requirement</th><th>Result</th><th>Evidence</th></tr><tr><td>F1</td><td>Anonymous display name (sanitised, ≤16 chars) and join</td><td><b>PASS</b></td><td>protocol tests; deployed join (E3)</td></tr><tr><td>F2</td><td>Steer with mouse/arrow keys, boost with SPACE/click</td><td><b>PASS</b></td><td>client; local browser test</td></tr><tr><td>F3</td><td>Eat food and grow (+1 section, ×1.01 scale)</td><td><b>PASS</b></td><td><code>snake.test.js</code>, <code>world.test.js</code></td></tr><tr><td>F4</td><td>Death on head-edge contact with another body or the arena edge; body becomes food</td><td><b>PASS</b></td><td><code>world.test.js</code> (collision, boundary, food drop)</td></tr><tr><td>F5</td><td>Dead human sees score and respawns (3 s or on request)</td><td><b>PASS</b></td><td><code>room.test.js</code> respawn test; death screen in browser</td></tr><tr><td>F6</td><td>50 snake slots, ≤4 humans, NPCs = 50 − humans</td><td><b>PASS</b></td><td><code>room.test.js</code> (1→49 … 4→46); deployed <code>/status</code> entities 50</td></tr><tr><td>F7</td><td>Lobby ≤10 s; starts immediately with 4 humans</td><td><b>PASS</b></td><td><code>room.test.js</code>, integration test; WORLD_STARTED <code>lobbyWaitMs</code></td></tr><tr><td>F8</td><td>Late join replaces an NPC; 5th human gets ROOM_FULL and is routed elsewhere</td><td><b>PASS</b></td><td>unit + integration tests; load test: ROOM_FULL clients joined new tasks (E11/E14)</td></tr><tr><td>F9</td><td>Score, in-world top 10 and global top 10 visible</td><td><b>PASS</b></td><td>browser UI; <code>/api/leaderboard</code> (E9)</td></tr><tr><td>F10</td><td>Connection status; bounded jittered reconnect</td><td><b>PASS</b></td><td>task-failure test: 4 players rejoined other worlds within one 5 s sample (E16)</td></tr><tr><td>F11</td><td>Durable results feed a global leaderboard</td><td><b>PASS</b></td><td>SQS → Lambda → DynamoDB logs and items (E7–E9)</td></tr><tr><td>F12</td><td>Multiple real browsers share a world</td><td><b>PASS</b></td><td>local two-browser test (E1); deployed screenshots pending (S1)</td></tr></table>
+<h3>Cloud / non-functional requirements</h3>
+<table><tr><th>Requirement</th><th>Result</th><th>Evidence</th></tr><tr><td>CloudFront serves the frontend from private S3</td><td><b>PASS</b></td><td>E2 (direct S3 403)</td></tr><tr><td>Cache hit demonstrated</td><td><b>PASS</b></td><td>E6: asset Hit, Age 41→45; API Miss 615 ms → Hit ~20 ms; BNE50</td></tr><tr><td>ECS/Fargate hosts the game server</td><td><b>PASS</b></td><td>E10, E12</td></tr><tr><td>ALB distributes connections</td><td><b>PASS</b></td><td>E14: 14 players distributed 4/4/4/2 across tasks; E13 healthy targets in 3 AZs</td></tr><tr><td>ECS Service Auto Scaling works, with real scale-out evidence</td><td><b>PASS</b></td><td>E11: desired 1→2→3→4→5 (12:10:15 → 12:17:15 AEST) under synthetic gameplay load</td></tr><tr><td>Scale-in after load</td><td>⟦pending⟧</td><td>E11b</td></tr><tr><td>Scale-in protection for active worlds</td><td><b>PASS</b></td><td>E12-task-scale-in-protection.txt: 4 active tasks protected, idle task not</td></tr><tr><td>SQS async processing, Lambda consumer, DynamoDB storage</td><td><b>PASS</b></td><td>E7, E8, E9</td></tr><tr><td>Retries / DLQ</td><td><b>PASS</b></td><td>E16-dlq-test.txt: 3 receives 60 s apart → DLQ → alarm</td></tr><tr><td>Idempotent consumer</td><td><b>PASS</b></td><td><code>lambda/test/worker.test.mjs</code>, <code>dynamoStore.test.mjs</code></td></tr><tr><td>Reconnect after server loss; ECS replaces the task</td><td><b>PASS</b></td><td>E16-task-failure-test.txt</td></tr><tr><td>Graceful shutdown flushes events</td><td><b>PASS</b></td><td>E16: 206 published, 0 dropped on SIGTERM</td></tr><tr><td>CloudWatch evidence (metrics, logs, dashboard, alarms)</td><td><b>PASS</b></td><td>E15 exports; dashboard <code>n5528712-a3</code></td></tr><tr><td>Automated tests</td><td><b>PASS</b></td><td>37 server + 13 Lambda tests (E18)</td></tr><tr><td>Load test tool works</td><td><b>PASS</b></td><td>E14</td></tr><tr><td>Infrastructure reproducible</td><td><b>PARTIAL</b></td><td>4 CloudFormation stacks + idempotent scripts. Buckets, log groups and Lambdas are created by scripts because of account deny policies (documented)</td></tr><tr><td>Required tags on taggable resources</td><td><b>PASS</b></td><td><code>describe-stack.sh</code> inventory: all A3 stacks, ECS, ALB, Lambda, SQS, DynamoDB, ECR, S3, logs, alarms, secret, parameter, scalable target + CloudFront distribution carry <code>purpose=assessment 3</code> and <code>qut-username</code>. Non-taggable: OAC, cache policy, dashboard, bucket policy</td></tr><tr><td>Security: validation, rate limiting, no client trust</td><td><b>PASS</b></td><td>protocol/integration tests</td></tr><tr><td>Security: private origin</td><td><b>PARTIAL</b></td><td>ALB secret header + private tasks verified (E19). The SG can't be restricted and the origin hop is HTTP (no SG/ACM permissions)</td></tr><tr><td>Least-privilege IAM</td><td><b>PARTIAL</b></td><td>pre-provisioned roles only (iam:CreateRole denied); policies not inspectable</td></tr><tr><td>Log retention ≤7 days</td><td><b>FAIL (account)</b></td><td><code>logs:PutRetentionPolicy</code> denied to the student role; retention left at default</td></tr></table>
+<h2>Appendix D. AWS Pricing Calculator inputs</h2>
+<h3>AWS Pricing Calculator: exact inputs</h3>
+<p>Create an estimate at https://calculator.aws/ (Region <b>Asia Pacific (Sydney)</b>), add these services, then</p>
+<p><b>Save and share</b> and paste the public link into the report. <i>(The link must be created by you; it is not invented here.)</i></p>
+<ul><li><b>AWS Fargate</b>: OS Linux, CPU architecture <b>ARM</b>, number of tasks <b>20</b> per day, average duration <b>24 hours</b></li></ul>
+<p>   (or "730 hours per month"), vCPU <b>0.25</b>, memory <b>0.5 GB</b>, ephemeral storage 20 GB (default, no charge).</p>
+<ul><li><b>Elastic Load Balancing</b>: Application Load Balancer, 1 ALB, processed bytes <b>3.2 GB per hour</b> (EC2/IP targets),</li></ul>
+<p>   average new connections <b>1 per second</b>, average connection duration <b>600 s</b>, rule evaluations default.</p>
+<ul><li><b>Amazon CloudFront</b>: Australia, data transfer out to internet <b>2,321 GB/month</b>, number of HTTPS requests</li></ul>
+<p>   <b>100,000/month</b>, data transfer out to origin <b>20 GB/month</b>.</p>
+<ul><li><b>AWS Lambda</b> (two entries or one combined): ARM, <b>200,000</b> requests/month, <b>50 ms</b>, <b>256 MB</b>;</li></ul>
+<p>   ARM, <b>300,000</b> requests/month, <b>20 ms</b>, <b>128 MB</b>.</p>
+<ul><li><b>Amazon SQS</b>: Standard queue, <b>1.3 million</b> requests/month.</li><li><b>Amazon DynamoDB</b>: On-demand, Standard table class, storage <b>1 GB</b>, writes <b>6.5 million</b>, reads <b>0.5 million</b>.</li><li><b>Amazon CloudWatch</b>: <b>25</b> custom/other metrics, <b>9</b> standard alarms, <b>10 GB</b> logs ingested (standard), <b>10 GB</b> stored, <b>1</b> dashboard (first 3 free).</li><li><b>Amazon ECR</b>: <b>0.3 GB</b> storage. <b>AWS Secrets Manager</b>: <b>1</b> secret, 10,000 API calls.</li></ul>
+<h2>Appendix E. Repository and reproduction</h2>
+<p>Source: the <code>a3-cloud-multiplayer</code> branch of https://github.com/CY3639/slither.io-clone. Key paths: <code>server/</code> (game server, Dockerfile), <code>client/</code> (Phaser client and build), <code>lambda/</code> (event worker and leaderboard API), <code>infra/</code> (CloudFormation and scripts), <code>load-tests/</code>, <code>tests/</code>, <code>evidence/</code>.</p>
+<p>Deploy with <code>AWS_PROFILE=default infra/scripts/deploy.sh</code>; run locally with <code>npm run install:all &amp;&amp; npm run dev</code>; test with <code>npm test</code>. Teardown steps are in <code>infra/CLEANUP.md</code>.</p>
+
+</body>
+</html>

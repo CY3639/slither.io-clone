@@ -385,19 +385,24 @@ export class Room {
         const fragmentOf = (snake) => {
             let frag = fragments.get(snake.id);
             if (frag === undefined) {
-                // Delta-encoded body: head absolute, then each section relative to the previous
-                // one. Sections are ~10 px apart, so most numbers are 1-2 digits instead of 4-5.
-                const pts = new Array(snake.length * 2);
+                // Body encoding (measured to cut egress, the dominant running cost):
+                //  - half resolution: every second section (0, 2, 4, ...) plus the tail; sections
+                //    are ~10 px apart with an 18+ px radius, so the client rebuilds the skipped
+                //    ones as neighbour midpoints with no visible difference;
+                //  - delta-encoded: first point absolute, then small offsets (1-2 digit numbers).
+                const pts = [];
                 let px = 0;
                 let py = 0;
-                for (let i = 0; i < snake.length; i++) {
+                const push = (i) => {
                     const x = Math.round(snake.secX[i]);
                     const y = Math.round(snake.secY[i]);
-                    pts[i * 2] = x - px;
-                    pts[i * 2 + 1] = y - py;
+                    pts.push(x - px, y - py);
                     px = x;
                     py = y;
-                }
+                };
+                const last = snake.length - 1;
+                for (let i = 0; i <= last; i += 2) push(i);
+                if (last % 2 === 1) push(last); // keep the tail exact when the length is even
                 frag = JSON.stringify({
                     i: snake.id,
                     n: snake.name,
@@ -405,6 +410,7 @@ export class Room {
                     h: snake.isHuman ? 1 : 0,
                     r: Math.round(snake.scale * 1000),
                     b: snake.boosting ? 1 : 0,
+                    l: snake.length,
                     p: pts,
                 });
                 fragments.set(snake.id, frag);

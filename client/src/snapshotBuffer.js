@@ -13,6 +13,31 @@ function SnapshotBuffer(delayMs) {
     this.offset = null;
 }
 
+/**
+ * Bodies arrive delta-encoded (first point absolute, then offsets) at half resolution: sections
+ * 0, 2, 4, ... plus the tail when the length is even. Rebuild all `length` sections, filling each
+ * skipped section with the midpoint of its neighbours.
+ */
+SnapshotBuffer.decodeBody = function (p, length) {
+    var k;
+    for (k = 2; k < p.length; k++) p[k] += p[k - 2];
+    var last = length - 1;
+    var full = new Array(length * 2);
+    for (var i = 0; i <= last; i += 2) {
+        full[i * 2] = p[i];
+        full[i * 2 + 1] = p[i + 1];
+    }
+    if (last % 2 === 1) {
+        full[last * 2] = p[p.length - 2];
+        full[last * 2 + 1] = p[p.length - 1];
+    }
+    for (var j = 1; j < last; j += 2) {
+        full[j * 2] = (full[(j - 1) * 2] + full[(j + 1) * 2]) / 2;
+        full[j * 2 + 1] = (full[(j - 1) * 2 + 1] + full[(j + 1) * 2 + 1]) / 2;
+    }
+    return full;
+};
+
 SnapshotBuffer.prototype = {
     reset: function () {
         this.snaps = [];
@@ -29,8 +54,7 @@ SnapshotBuffer.prototype = {
         snap.byId = {};
         for (var i = 0; i < snap.sn.length; i++) {
             var s = snap.sn[i];
-            // Bodies arrive delta-encoded (head absolute, then offsets); expand to absolute points.
-            for (var k = 2; k < s.p.length; k++) s.p[k] += s.p[k - 2];
+            s.p = SnapshotBuffer.decodeBody(s.p, s.l);
             snap.byId[s.i] = s;
         }
         this.snaps.push(snap);
