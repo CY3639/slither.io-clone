@@ -1,0 +1,59 @@
+{
+  "url": "wss://d3riy98bj197ur.cloudfront.net/ws",
+  "startedAt": "2026-10-19T02:07:02.958Z",
+  "finishedAt": "2026-10-19T02:32:02.979Z",
+  "config": {
+    "clients": 14,
+    "durationS": 1500,
+    "rampS": 30,
+    "inputHz": 10
+  },
+  "connections": {
+    "attempts": 931,
+    "opened": 931,
+    "joined": 18,
+    "roomFullResponses": 913,
+    "connectErrors": 0,
+    "unexpectedCloses": 4,
+    "serverShutdownNotices": 0,
+    "playersGaveUp": 0,
+    "inWorldAtEnd": 14
+  },
+  "distinctTasks": [
+    "f542cf39",
+    "c01769f7",
+    "ac1f0753",
+    "38980ea1",
+    "f371d058"
+  ],
+  "distinctWorlds": [
+    "f542cf39-3",
+    "c01769f7-1",
+    "ac1f0753-1",
+    "38980ea1-1",
+    "f371d058-1"
+  ],
+  "playersPerTaskAtEnd": {
+    "f542cf39": 4,
+    "ac1f0753": 4,
+    "38980ea1": 4,
+    "f371d058": 2
+  },
+  "gameplay": {
+    "snapshots": 262605,
+    "deaths": 1652,
+    "megabytesReceived": 1833.4
+  },
+  "rttMs": {
+    "samples": 8769,
+    "p50": 16,
+    "p95": 29,
+    "p99": 68,
+    "max": 299
+  },
+  "snapshotIntervalMs": {
+    "p50": 67,
+    "p95": 71,
+    "p99": 101
+  }
+}

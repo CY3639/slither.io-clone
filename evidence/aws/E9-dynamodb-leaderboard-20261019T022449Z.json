@@ -1,0 +1,250 @@
+{
+    "Items": [
+        {
+            "displayName": {
+                "S": "load-2"
+            },
+            "PK": {
+                "S": "PLAYER#5153c05e-d48d-4abd-b33a-a0b51484187d"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:13:37.486Z"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "bestScore": {
+                "N": "44"
+            },
+            "GSI1SK": {
+                "N": "44"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "PK": {
+                "S": "PLAYER#d25d20f6-4acd-4973-acd0-900d3caebc84"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:22:57.609Z"
+            },
+            "bestScore": {
+                "N": "43"
+            },
+            "GSI1SK": {
+                "N": "43"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "displayName": {
+                "S": "load-10"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "bestScore": {
+                "N": "42"
+            },
+            "GSI1SK": {
+                "N": "42"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:22:57.589Z"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            },
+            "displayName": {
+                "S": "load-8"
+            },
+            "PK": {
+                "S": "PLAYER#3bc0fe12-d9fa-4f2f-ae48-276d85a4a9fd"
+            }
+        },
+        {
+            "bestScore": {
+                "N": "37"
+            },
+            "GSI1SK": {
+                "N": "37"
+            },
+            "displayName": {
+                "S": "load-3"
+            },
+            "PK": {
+                "S": "PLAYER#03f0934c-d8db-4341-b057-2333c3a53add"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:23:52.717Z"
+            }
+        },
+        {
+            "bestScoreAt": {
+                "S": "2026-10-19T02:14:36.128Z"
+            },
+            "displayName": {
+                "S": "load-0"
+            },
+            "PK": {
+                "S": "PLAYER#50500258-3d2d-46d2-a09e-be1beee6b14b"
+            },
+            "bestScore": {
+                "N": "35"
+            },
+            "GSI1SK": {
+                "N": "35"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "displayName": {
+                "S": "load-12"
+            },
+            "PK": {
+                "S": "PLAYER#e27aee6a-1357-47bb-b367-553fff7f1922"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:21:54.654Z"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "bestScore": {
+                "N": "28"
+            },
+            "GSI1SK": {
+                "N": "28"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "displayName": {
+                "S": "load-11"
+            },
+            "PK": {
+                "S": "PLAYER#61825275-6885-4842-b6bc-fe5ed4e9a51f"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:22:23.666Z"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "bestScore": {
+                "N": "25"
+            },
+            "GSI1SK": {
+                "N": "25"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "bestScoreAt": {
+                "S": "2026-10-19T02:16:19.661Z"
+            },
+            "bestScore": {
+                "N": "23"
+            },
+            "GSI1SK": {
+                "N": "23"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "PK": {
+                "S": "PLAYER#575456b6-bef9-42f7-ba78-480d9f6041f3"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            },
+            "displayName": {
+                "S": "load-8"
+            }
+        },
+        {
+            "displayName": {
+                "S": "load-4"
+            },
+            "bestScoreAt": {
+                "S": "2026-10-19T02:20:23.639Z"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "PK": {
+                "S": "PLAYER#10783ff6-cd8c-4db7-9074-34e37413486c"
+            },
+            "bestScore": {
+                "N": "22"
+            },
+            "GSI1SK": {
+                "N": "22"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        },
+        {
+            "bestScoreAt": {
+                "S": "2026-10-19T02:14:58.469Z"
+            },
+            "displayName": {
+                "S": "load-13"
+            },
+            "PK": {
+                "S": "PLAYER#c6c3d140-5dad-43b8-bdee-5e0cfd12c2f1"
+            },
+            "SK": {
+                "S": "PROFILE"
+            },
+            "bestScore": {
+                "N": "22"
+            },
+            "GSI1SK": {
+                "N": "22"
+            },
+            "GSI1PK": {
+                "S": "LB"
+            }
+        }
+    ],
+    "Count": 10,
+    "ScannedCount": 10,
+    "LastEvaluatedKey": {
+        "GSI1PK": {
+            "S": "LB"
+        },
+        "PK": {
+            "S": "PLAYER#c6c3d140-5dad-43b8-bdee-5e0cfd12c2f1"
+        },
+        "SK": {
+            "S": "PROFILE"
+        },
+        "GSI1SK": {
+            "N": "22"
+        }
+    }
+}

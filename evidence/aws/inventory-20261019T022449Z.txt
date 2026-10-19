@@ -1,0 +1,89 @@
+== n5528712-a3-data (UPDATE_COMPLETE)
+   TableName	n5528712-a3-game
+   TableArn	arn:aws:dynamodb:ap-southeast-2:901444280953:table/n5528712-a3-game
+   DLQName	n5528712-a3-events-dlq
+   DLQUrl	https://sqs.ap-southeast-2.amazonaws.com/901444280953/n5528712-a3-events-dlq
+   DLQArn	arn:aws:sqs:ap-southeast-2:901444280953:n5528712-a3-events-dlq
+   RepositoryArn	arn:aws:ecr:ap-southeast-2:901444280953:repository/a3/n5528712-a3-game
+   RepositoryUri	901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/a3/n5528712-a3-game
+   SessionSecretArn	arn:aws:secretsmanager:ap-southeast-2:901444280953:secret:n5528712-a3-session-secret-J3Cu91
+   QueueArn	arn:aws:sqs:ap-southeast-2:901444280953:n5528712-a3-events
+   QueueName	n5528712-a3-events
+   QueueUrl	https://sqs.ap-southeast-2.amazonaws.com/901444280953/n5528712-a3-events
+== n5528712-a3-backend (CREATE_COMPLETE)
+   ClusterArn	arn:aws:ecs:ap-southeast-2:901444280953:cluster/n5528712-a3-cluster
+   ApiTargetGroupArn	arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-api-tg/85363c1a6e41ffa9
+   ServiceArn	arn:aws:ecs:ap-southeast-2:901444280953:service/n5528712-a3-cluster/n5528712-a3-game
+   GameTargetGroupArn	arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f
+   GameTargetGroupFullName	targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f
+   OccupancyPolicyArn	arn:aws:autoscaling:ap-southeast-2:901444280953:scalingPolicy:f438d4f2-c41f-4316-bcb9-3d7dfd41d4b7:resource/ecs/service/n5528712-a3-cluster/n5528712-a3-game:policyName/n5528712-a3-occupancy-target
+   LoadBalancerArn	arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:loadbalancer/app/n5528712-a3-alb/12ec3ffa3d11a442
+   ServiceName	n5528712-a3-game
+   CpuPolicyArn	arn:aws:autoscaling:ap-southeast-2:901444280953:scalingPolicy:f438d4f2-c41f-4316-bcb9-3d7dfd41d4b7:resource/ecs/service/n5528712-a3-cluster/n5528712-a3-game:policyName/n5528712-a3-cpu-target
+   LoadBalancerDns	n5528712-a3-alb-212923744.ap-southeast-2.elb.amazonaws.com
+   ClusterName	n5528712-a3-cluster
+   LoadBalancerFullName	app/n5528712-a3-alb/12ec3ffa3d11a442
+   TaskDefinitionArn	arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n5528712-a3-game:2
+== n5528712-a3-frontend (CREATE_COMPLETE)
+   DistributionDomain	d3riy98bj197ur.cloudfront.net
+   DistributionArn	arn:aws:cloudfront::901444280953:distribution/E3OF3QK3WQBH9A
+   WebSocketUrl	wss://d3riy98bj197ur.cloudfront.net/ws
+   AppUrl	https://d3riy98bj197ur.cloudfront.net/
+   DistributionId	E3OF3QK3WQBH9A
+== n5528712-a3-monitoring (CREATE_COMPLETE)
+   DashboardUrl	https://ap-southeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-southeast-2#dashboards:name=n5528712-a3
+== ECS service
+   arn:aws:ecs:ap-southeast-2:901444280953:service/n5528712-a3-cluster/n5528712-a3-game	5	5	arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n5528712-a3-game:2
+== Lambda functions
+   arn:aws:lambda:ap-southeast-2:901444280953:function:n5528712-a3-event-worker	nodejs22.x	arm64	256
+   arn:aws:lambda:ap-southeast-2:901444280953:function:n5528712-a3-leaderboard-api	nodejs22.x	arm64	128
+   ESM 7d1fbee4-ef3d-4e7d-b1e6-4bcf35aca3e3	Enabled	10	arn:aws:sqs:ap-southeast-2:901444280953:n5528712-a3-events
+== Buckets
+   arn:aws:s3:::n5528712-a3-frontend-901444280953
+   arn:aws:s3:::n5528712-a3-artifacts-901444280953
+== Resources tagged qut-username=n5528712@qut.edu.au, purpose=assessment 3
+   arn:aws:application-autoscaling:ap-southeast-2:901444280953:scalable-target/0ec5f438d4f2c41f4316bcb93d7dfd41d4b7
+   arn:aws:cloudformation:ap-southeast-2:901444280953:stack/n5528712-a3-backend/b8935130-cb5f-11f1-a9cd-02fff78e37f7
+   arn:aws:cloudformation:ap-southeast-2:901444280953:stack/n5528712-a3-data/6ca696d0-cb5d-11f1-abeb-02ffd67a4961
+   arn:aws:cloudformation:ap-southeast-2:901444280953:stack/n5528712-a3-frontend/89f94630-cb60-11f1-a15f-06ffe745c0b9
+   arn:aws:cloudformation:ap-southeast-2:901444280953:stack/n5528712-a3-monitoring/4e3294c0-cb61-11f1-9ff3-064557c9faa9
+   arn:aws:cloudwatch:ap-southeast-2:901444280953:alarm:n5528712-a3-event-worker-errors
+   arn:aws:cloudwatch:ap-southeast-2:901444280953:alarm:n5528712-a3-events-backlog
+   arn:aws:cloudwatch:ap-southeast-2:901444280953:alarm:n5528712-a3-events-dlq-not-empty
+   arn:aws:cloudwatch:ap-southeast-2:901444280953:alarm:n5528712-a3-slow-game-tick
+   arn:aws:cloudwatch:ap-southeast-2:901444280953:alarm:n5528712-a3-unhealthy-game-targets
+   arn:aws:dynamodb:ap-southeast-2:901444280953:table/n5528712-a3-game
+   arn:aws:ec2:ap-southeast-2:901444280953:network-interface/eni-032f025d2ced36b26
+   arn:aws:ec2:ap-southeast-2:901444280953:network-interface/eni-036bc21b962c9dcd7
+   arn:aws:ec2:ap-southeast-2:901444280953:network-interface/eni-0537906b44c6ea94e
+   arn:aws:ec2:ap-southeast-2:901444280953:network-interface/eni-09d4bc84bf24be15b
+   arn:aws:ec2:ap-southeast-2:901444280953:network-interface/eni-0f8d4c1db2633b1bd
+   arn:aws:ecr:ap-southeast-2:901444280953:repository/a3/n5528712-a3-game
+   arn:aws:ecs:ap-southeast-2:901444280953:cluster/n5528712-a3-cluster
+   arn:aws:ecs:ap-southeast-2:901444280953:service/n5528712-a3-cluster/n5528712-a3-game
+   arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n5528712-a3-game:1
+   arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n5528712-a3-game:2
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/38980ea19b614871a9377cfda252a9de
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/ac1f0753ed6945e7801097ce13966c9d
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/c01769f730c7457cb5988c92565b7216
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/f371d05877cb44c08eccdd6865543983
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/f542cf394a9e4bb7a420997e1aa7855f
+   arn:aws:ecs:ap-southeast-2:901444280953:task/n5528712-a3-cluster/fafc9a7cee7a434685fbd31b5942841a
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:listener-rule/app/n5528712-a3-alb/12ec3ffa3d11a442/5e3ec07869b6513f/3094355842262ef2
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:listener-rule/app/n5528712-a3-alb/12ec3ffa3d11a442/5e3ec07869b6513f/a4eb183b6961999b
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:listener/app/n5528712-a3-alb/12ec3ffa3d11a442/5e3ec07869b6513f
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:loadbalancer/app/n5528712-a3-alb/12ec3ffa3d11a442
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-api-tg/85363c1a6e41ffa9
+   arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f
+   arn:aws:lambda:ap-southeast-2:901444280953:event-source-mapping:7d1fbee4-ef3d-4e7d-b1e6-4bcf35aca3e3
+   arn:aws:lambda:ap-southeast-2:901444280953:function:n5528712-a3-event-worker
+   arn:aws:lambda:ap-southeast-2:901444280953:function:n5528712-a3-leaderboard-api
+   arn:aws:logs:ap-southeast-2:901444280953:log-group:/aws/lambda/n5528712-a3-event-worker
+   arn:aws:logs:ap-southeast-2:901444280953:log-group:/aws/lambda/n5528712-a3-leaderboard-api
+   arn:aws:logs:ap-southeast-2:901444280953:log-group:/n5528712-a3/game
+   arn:aws:s3:::n5528712-a3-artifacts-901444280953
+   arn:aws:s3:::n5528712-a3-frontend-901444280953
+   arn:aws:secretsmanager:ap-southeast-2:901444280953:secret:n5528712-a3-session-secret-J3Cu91
+   arn:aws:sqs:ap-southeast-2:901444280953:n5528712-a3-events
+   arn:aws:sqs:ap-southeast-2:901444280953:n5528712-a3-events-dlq
+   arn:aws:ssm:ap-southeast-2:901444280953:parameter/n5528712/a3/origin-verify-secret

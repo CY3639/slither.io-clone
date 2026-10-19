@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Turn a CloudWatch export (evidence/aws/E15-cloudwatch-metrics-*.csv, produced by
 // infra/scripts/collect-evidence.sh) into SVG line charts for the report. No dependencies.
-// Usage: node report/make-charts.mjs evidence/aws/E15-cloudwatch-metrics-<ts>.csv [HH:MM-HH:MM]
+// Usage: node report/make-charts.mjs evidence/aws/E15-cloudwatch-metrics-<ts>.csv [HH:MM-HH:MM in AEST]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,15 +14,17 @@ mkdirSync(outDir, { recursive: true });
 const [header, ...lines] = readFileSync(csvPath, 'utf8').trim().split('\n');
 const cols = header.split(',');
 let rows = lines.map((l) => Object.fromEntries(l.split(',').map((v, i) => [cols[i], i === 0 ? v : v === '' ? null : Number(v)])));
+// HumanPlayers is emitted every 10 s by each task (EMF), so a 1-minute Sum counts each player 6 times.
+rows.forEach((r) => {
+    if (r.humans !== null && r.humans !== undefined) r.humans = Math.round(r.humans / 6);
+});
 if (window) {
     const [from, to] = window.split('-');
     rows = rows.filter((r) => r.time >= from && r.time <= to);
 }
-// CloudWatch timestamps are UTC; show Brisbane time (UTC+10) on the axis.
-const local = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return `${String((h + 10) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-};
+// The AWS CLI renders get-metric-data timestamps in the caller's local zone (AEST here), so the
+// CSV times are already Brisbane time and the window argument is given in AEST too.
+const local = (t) => t;
 
 const COLORS = ['#ed7100', '#2e27ad', '#3f8624', '#e7157b', '#147eba', '#8c4fff'];
 
@@ -70,12 +72,12 @@ chart({
     file: 'chart-tasks.svg',
     title: 'ECS service: desired vs running tasks during the load test',
     series: [{ key: 'desired', label: 'DesiredTaskCount' }, { key: 'running', label: 'RunningTaskCount', dash: true }],
-    yMax: 7, yLabel: 'tasks', step: true,
+    yMax: 8, yLabel: 'tasks', step: true,
 });
 chart({
     file: 'chart-occupancy.svg',
     title: 'World occupancy (scaling metric) and connected humans',
-    series: [{ key: 'occupancy', label: 'WorldOccupancyPct (avg)' }, { key: 'humans', label: 'HumanPlayers (sum of samples)' }],
+    series: [{ key: 'occupancy', label: 'WorldOccupancyPct (avg)' }, { key: 'humans', label: 'Humans in worlds (fleet)' }],
     yLabel: '% / count', annotations: [{ value: 75, label: 'target 75 %' }],
 });
 chart({

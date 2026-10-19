@@ -1,0 +1,2 @@
+n5528712-a3-events {"ApproximateNumberOfMessages":"0","ApproximateNumberOfMessagesNotVisible":"3"}
+n5528712-a3-events-dlq {"ApproximateNumberOfMessages":"1","ApproximateNumberOfMessagesNotVisible":"0"}
