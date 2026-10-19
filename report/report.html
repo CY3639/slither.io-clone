@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CAB432 Assessment 3 — Battle Snake — n5528712</title>
+<link rel="stylesheet" href="report.css" />
+</head>
+<body>
+
+<!-- ================================================================ TITLE PAGE -->
+<section class="title-page">
+  <div class="unit">CAB432 Cloud Computing · Assessment 3 · Cloud Project</div>
+  <h1 class="t">Battle Snake: a horizontally scaled, server-authoritative multiplayer Slither.io on AWS</h1>
+  <div class="sub">Technical report</div>
+  <table>
+    <tr><td>Student</td><td>Yun Chi Yip</td></tr>
+    <tr><td>Student ID</td><td>n5528712</td></tr>
+    <tr><td>QUT username</td><td>n5528712@qut.edu.au</td></tr>
+    <tr><td>Deployed application</td><td>https://d3riy98bj197ur.cloudfront.net/</td></tr>
+    <tr><td>AWS region / account</td><td>ap-southeast-2 · 901444280953</td></tr>
+    <tr><td>Date</td><td>19 October 2026</td></tr>
+  </table>
+  <div class="ai">
+    <h3>Generative AI use declaration ⟦STUDENT TO REVIEW AND CONFIRM BEFORE SUBMISSION⟧</h3>
+    <p>Generative AI was used extensively in this assessment. Anthropic's Claude (through the Claude Code
+    agentic coding tool) worked under my direction and on my instructions: it inspected the starting repository,
+    designed the architecture, wrote the server, client, Lambda, infrastructure-as-code and test code,
+    ran the local, Docker and AWS deployments and tests, collected the evidence in the <code>evidence/</code> folder,
+    and drafted this report from that evidence. I set the requirements, scope and constraints, provided the account
+    access and the starting code (a fork of Loonride's open-source Slither.io tutorial clone), reviewed the outputs,
+    and am responsible for the submitted work.</p>
+    <p>All measurements reported here come from the deployed system and test runs, not from the AI's assumptions.
+    ⟦Replace or extend this statement with the exact wording QUT/CAB432 requires, and describe your own
+    review and contribution accurately.⟧</p>
+  </div>
+</section>
+
+<!-- ================================================================ EXECUTIVE SUMMARY -->
+<h1 class="nobreak" id="exec">Executive summary</h1>
+⟦EXEC_SUMMARY⟧
+
+<!-- ================================================================ TOC -->
+<h2 id="toc">Table of contents</h2>
+<div class="toc">
+<ol>
+  <li><a href="#intro">1 Introduction</a></li>
+  <li><a href="#vna">2 Vendor-agnostic architecture</a>
+    <ol><li><a href="#vna-components">2.1 Components</a></li><li><a href="#vna-worlds">2.2 Independent authoritative worlds</a></li><li><a href="#vna-flows">2.3 Data and control flows</a></li><li><a href="#vna-alt">2.4 Alternatives considered</a></li></ol></li>
+  <li><a href="#aws">3 Vendor-specific implementation (AWS)</a>
+    <ol><li><a href="#aws-map">3.1 Service mapping</a></li><li><a href="#aws-constraints">3.2 Account constraints and adaptations</a></li><li><a href="#aws-sec">3.3 Security</a></li><li><a href="#aws-data">3.4 Data model</a></li><li><a href="#aws-iac">3.5 Infrastructure as code and observability</a></li></ol></li>
+  <li><a href="#app">4 Application implementation</a>
+    <ol><li><a href="#app-reuse">4.1 From a single-player tutorial to an authoritative server</a></li><li><a href="#app-flows">4.2 Workflows</a></li><li><a href="#app-net">4.3 Networking and bandwidth</a></li><li><a href="#app-persist">4.4 Asynchronous persistence</a></li><li><a href="#app-scale">4.5 Scaling: design and measured behaviour</a></li><li><a href="#app-res">4.6 Resilience</a></li><li><a href="#app-cache">4.7 Edge caching</a></li><li><a href="#app-test">4.8 Testing</a></li></ol></li>
+  <li><a href="#cost">5 Cost and sustainability</a></li>
+  <li><a href="#reflect">6 Reflection</a></li>
+  <li><a href="#refs">References</a></li>
+  <li><a href="#appx">Appendices</a></li>
+</ol>
+</div>
+
+<!-- ================================================================ 1 INTRODUCTION -->
+<h1 id="intro">1 Introduction</h1>
+<p>Real-time multiplayer games are a demanding workload for cloud architecture. They need stateful compute that
+updates many entities dozens of times per second, low-latency bidirectional communication, durable records of
+outcomes, and capacity that follows a player population that changes through the day. This project uses a small
+Slither.io-style game as a vehicle to build and measure such a system on AWS.</p>
+<p>The starting point was Loonride's open-source tutorial clone of Slither.io (Loonride, 2017). It is a single-browser
+Phaser CE 2.6.2 game in which a P2 physics engine running in the page decides movement, collisions, food
+consumption and growth for one player and two bots. Nothing in it is networked, and the browser is the authority on
+every outcome, so a multiplayer version could not trust it. The project keeps the original sprites, renderer,
+movement constants and rules, and moves all authority to a server-side simulation.</p>
+<h2>Scope</h2>
+<ul>
+  <li>Players enter an anonymous display name and join a <b>world</b>: an arena that always holds <b>50 snakes</b>.
+  At most <b>4 are humans</b> and the rest are server-controlled NPCs (<code>NPCs = 50 − humans</code>).</li>
+  <li>The first human starts a lobby of <b>at most 10 seconds</b>. The world starts early when four humans are present.
+  Later humans replace an NPC immediately. A fifth human receives <code>ROOM_FULL</code> and is routed elsewhere.</li>
+  <li>The server simulates movement, eating, growth, collisions and death at 30 Hz. Clients only send intent
+  (heading and boost) and render interpolated snapshots.</li>
+  <li>Deaths and session results are stored durably and feed a global leaderboard.</li>
+</ul>
+<h2>Objectives</h2>
+<p>The engineering objectives were a cloud architecture that (i) scales <b>horizontally with demand using
+non-Lambda auto-scaling</b>, (ii) distributes connections across stateful workers, (iii) keeps durable data outside
+those workers, (iv) caches static content at the edge, (v) processes outcomes asynchronously and idempotently,
+(vi) is observable and recovers from failures, and (vii) stays cost-proportionate. Every claim in this report is
+backed by a captured artefact. Evidence identifiers such as <span class="ev">[E11]</span> refer to the register in
+Appendix B and files in the repository's <code>evidence/</code> folder.</p>
+
+<!-- ================================================================ 2 VENDOR-AGNOSTIC -->
+<h1 id="vna">2 Vendor-agnostic architecture</h1>
+<figure><img src="figures/vendor-neutral.svg" alt="Vendor-neutral architecture" />
+<figcaption>Figure 1. Vendor-neutral architecture. Orange = stateful game workers; blue = asynchronous/serverless
+path; green = edge delivery. Only the CDN is publicly reachable.</figcaption></figure>
+
+<h2 id="vna-components">2.1 Components</h2>
+<table>
+<tr><th style="width:20%">Concept</th><th style="width:40%">Responsibility in this system</th><th>Why it is needed</th></tr>
+<tr><td>Edge cache / CDN</td><td>Terminates TLS near players. Caches fingerprinted static files for a year and the leaderboard response for 10 s. Proxies WebSocket upgrades and API calls to the private origin.</td><td>Static delivery scales independently of game servers. Repeat requests never reach the origin. A single origin for page, API and socket removes CORS and needs one certificate.</td></tr>
+<tr><td>Object storage</td><td>Holds the built client (HTML, one JS bundle, Phaser, sprites), readable only by the CDN.</td><td>Durable, cheap, serverless hosting for immutable assets.</td></tr>
+<tr><td>Load balancer</td><td>Accepts traffic only from the CDN, health-checks workers, and assigns each new WebSocket to a healthy worker (dispatcher-push).</td><td>Hides individual workers, removes failed ones from rotation, and spreads <i>new</i> sessions.</td></tr>
+<tr><td>Containerised game workers</td><td>Each worker process owns exactly one authoritative world: lobby, 50 snake slots, food, 30 Hz tick, 15 Hz snapshots.</td><td>Real-time simulation needs long-lived in-memory state, held sockets and a steady CPU budget. Short-lived functions fit this poorly.</td></tr>
+<tr><td>Horizontal autoscaler</td><td>Adds or removes workers from measured world occupancy and CPU. Workers hosting players opt out of scale-in.</td><td>Capacity follows demand without terminating games in progress.</td></tr>
+<tr><td>Message queue + dead-letter queue</td><td>Durable buffer for domain events (<code>PLAYER_DIED</code>, <code>SESSION_ENDED</code>, <code>WORLD_STARTED</code>, <code>WORLD_COMPLETED</code>).</td><td>Decouples the latency-critical tick from database writes, absorbs bursts, retries failures and isolates poison messages.</td></tr>
+<tr><td>Asynchronous worker (function)</td><td>Applies events in batches, idempotently.</td><td>Scales to zero. Retry semantics come from the queue.</td></tr>
+<tr><td>Structured key-value store</td><td>Player profiles, death history, world records, idempotency markers, and a secondary index ordered by best score.</td><td>Durable state lives outside the stateful workers. Every access is a key lookup or an ordered range, never a scan.</td></tr>
+<tr><td>Read API (function)</td><td>Serves the leaderboard and a player's statistics.</td><td>Keeps workers focused on simulation. Responses are cacheable at the edge.</td></tr>
+<tr><td>Monitoring system</td><td>Structured logs, platform and custom metrics, dashboards, alarms.</td><td>Drives scaling decisions and makes failures diagnosable.</td></tr>
+</table>
+
+<h2 id="vna-worlds">2.2 Independent authoritative worlds</h2>
+<p>The central decision is that <b>the unit of scale is an independent world</b>. A world is small (50 snakes,
+≤4 humans), lives entirely in one worker's memory, and shares no real-time state with any other world. Scaling out
+means <i>adding worlds</i>, not partitioning one world across machines.</p>
+<p>This removes distributed consistency from the hot path. Each 30 Hz tick is a single-threaded loop over local
+memory (measured at about 0.3 ms per tick for a full world, §4.5), with no cross-node locks, replicated physics or
+consensus protocol. It also makes capacity planning arithmetic: because NPCs are workload rather than users,</p>
+<pre>requiredWorlds = ceil(concurrentHumans / 4)        runningWorkers ≈ ceil(concurrentHumans / (4 × targetOccupancy))</pre>
+<p>The trade-off is explicit. <b>A world's transient state exists only inside its worker</b>. If that worker fails or is
+replaced, the positions and current lengths in that world are lost, and its players reconnect to another world
+within seconds. That is acceptable for a casual arena game, where a round is short and losing it costs a player one
+life. Everything with long-term value (scores, deaths, best scores, world summaries) leaves the worker as an
+event at the moment it happens and is stored durably. Restoring exact world state would need checkpointing or
+replication at tick rate, a large cost in complexity, bandwidth and latency for little player benefit. A single
+global world was rejected for the same reason: it would need spatial partitioning with entity hand-over and
+cross-node collision detection.</p>
+
+<h2 id="vna-flows">2.3 Data and control flows</h2>
+<ol>
+  <li><b>Join.</b> Browser → CDN → load balancer → some worker. If the world has a free human slot, the player joins.
+  Otherwise the worker replies <code>ROOM_FULL</code> and closes. The client retries after 150–600 ms jitter, so the load
+  balancer can choose another worker. After five quick attempts it backs off exponentially (≤5 s) for about three
+  minutes while the autoscaler adds a world.</li>
+  <li><b>Lobby and start.</b> The first human starts a ≤10 s countdown. The fourth human starts the world immediately.
+  At start, empty slots are filled with NPCs.</li>
+  <li><b>Play.</b> Clients send intent at ≤20 Hz. The worker ticks at 30 Hz and sends each client a 15 Hz snapshot
+  limited to its area of interest. Clients render 110 ms behind real time and interpolate.</li>
+  <li><b>Persist.</b> Outcomes become events with unique IDs → queue → worker function → conditional, transactional
+  writes → ranked index → read API → edge cache.</li>
+  <li><b>Scale.</b> Workers publish occupancy and tick metrics. The autoscaler tracks targets for occupancy and CPU.
+  Workers with players protect themselves from scale-in.</li>
+</ol>
+
+<h2 id="vna-alt">2.4 Alternatives considered</h2>
+<table>
+<tr><th style="width:17%">Decision</th><th style="width:20%">Chosen</th><th style="width:20%">Rejected</th><th>Reasoning</th></tr>
+<tr><td>Real-time transport</td><td>WebSocket</td><td>HTTP polling; WebRTC/UDP</td><td>Polling costs one request per update per client at 15 Hz. WebRTC needs signalling and TURN servers and isn't proxied by standard CDNs or load balancers. WebSocket gives one full-duplex connection that passes through the CDN and load balancer.</td></tr>
+<tr><td>Authority</td><td>Server-authoritative</td><td>Client-authoritative (original game)</td><td>A client could forge position, score or invulnerability. The leaderboard is only meaningful if the server is the referee.</td></tr>
+<tr><td>World topology</td><td>Many small independent worlds</td><td>One global world</td><td>Linear scale-out without distributed state (§2.2).</td></tr>
+<tr><td>Game compute</td><td>Managed containers</td><td>Functions; self-managed VMs</td><td>Functions are short-lived and stateless. VMs add patching and capacity management, and only pay off at sustained high utilisation.</td></tr>
+<tr><td>Persistence path</td><td>Async queue</td><td>Synchronous writes from the game loop</td><td>Synchronous writes add network latency and database throttling to the tick and connection path. A queue absorbs bursts and retries.</td></tr>
+<tr><td>Static delivery</td><td>CDN + private object store</td><td>Served by game workers; public bucket</td><td>Workers would spend CPU and bandwidth on static files. A public bucket has no edge cache and more exposure.</td></tr>
+<tr><td>Datastore</td><td>Key-value store + ordered index</td><td>Relational database</td><td>Access patterns are key lookups and "top N by score". Pay-per-request with no instance to run. Joins are unused.</td></tr>
+<tr><td>Scaling signal</td><td>World occupancy (custom) + CPU</td><td>CPU only; request count</td><td>Request count is meaningless for long-lived sockets. Measurement showed a full world uses only ~20–30 % of its CPU allocation, so CPU alone never triggers (§4.5). Occupancy measures user capacity directly.</td></tr>
+<tr><td>Lost world</td><td>Reconnect to any world</td><td>Checkpoint/replicate state</td><td>Disproportionate cost for casual sessions. Durable stats are already safe.</td></tr>
+</table>
+
+<!-- ================================================================ 3 AWS -->
+<h1 id="aws">3 Vendor-specific implementation (AWS)</h1>
+<figure><img src="figures/aws-architecture.svg" alt="AWS architecture" />
+<figcaption>Figure 2. Deployed AWS architecture (ap-southeast-2). Resource names are the real deployed identifiers.
+The ALB sits in the three public subnets; game tasks run in the three private subnets without public IPs.</figcaption></figure>
+
+<h2 id="aws-map">3.1 Service mapping</h2>
+<table>
+<tr><th style="width:16%">Concept</th><th style="width:18%">AWS service</th><th>Deployed configuration and rationale</th></tr>
+<tr><td>Edge cache / CDN</td><td>Amazon CloudFront</td><td>One distribution (<code>d3riy98bj197ur.cloudfront.net</code>), HTTP/2 and HTTP/3, <code>PriceClass_All</code> (Australian edge locations are only in this class; requests were served from <code>BNE50</code>, Brisbane). Default behaviour → S3 with the managed <i>CachingOptimized</i> policy. <code>/ws</code> → ALB with <i>CachingDisabled</i> and <i>AllViewerExceptHostHeader</i>, which forwards the WebSocket upgrade headers. <code>/api/*</code> → ALB with a custom policy (default TTL 10 s, cache key = <code>limit</code>, <code>id</code> query strings only). The origin request carries a secret <code>X-Origin-Verify</code> header.</td></tr>
+<tr><td>Object storage</td><td>Amazon S3</td><td>Private bucket <code>n5528712-a3-frontend-901444280953</code>, Block Public Access on, bucket policy allowing <code>s3:GetObject</code> only to this distribution through Origin Access Control (OAC). Objects carry <code>Cache-Control: public, max-age=31536000, immutable</code> (content-hashed names) or <code>no-cache</code> (<code>index.html</code>).</td></tr>
+<tr><td>Load balancer</td><td>Application Load Balancer</td><td><code>n5528712-a3-alb</code> across three AZs, idle timeout 120 s. Listener rules forward <code>/ws</code>, <code>/health</code>, <code>/ready</code>, <code>/status</code> to an IP target group (port 8080, health check <code>/ready</code> every 10 s, deregistration delay 15 s, round robin) and <code>/api/*</code> to a Lambda target group, <b>only when the secret header is present</b>. The default action is a fixed 403.</td></tr>
+<tr><td>Game workers</td><td>Amazon ECS on AWS Fargate</td><td>Cluster <code>n5528712-a3-cluster</code> (Container Insights on), service <code>n5528712-a3-game</code>. Task: 0.25 vCPU, 0.5 GB, <b>ARM64 (Graviton)</b>, image from ECR, container health check on <code>/health</code>, <code>stopTimeout</code> 30 s, deployment circuit breaker with rollback. Tasks run in private subnets with no public IP.</td></tr>
+<tr><td>Container registry</td><td>Amazon ECR</td><td><code>a3/n5528712-a3-game</code>, scan on push, lifecycle keeps the newest 10 images. Image built for <code>linux/arm64</code>, <code>node:22-alpine</code>, non-root.</td></tr>
+<tr><td>Autoscaler</td><td>Application Auto Scaling (ECS Service Auto Scaling)</td><td>Scalable target 1–6 tasks. Target tracking on the custom metric <code>WorldOccupancyPct</code> (Average, target 75 %) and on <code>ECSServiceAverageCPUUtilization</code> (target 50 %). Scale-out cooldown 60 s, scale-in 180 s. Tasks with players set <b>ECS task scale-in protection</b> through the ECS agent endpoint.</td></tr>
+<tr><td>Message queue</td><td>Amazon SQS</td><td>Standard queue <code>n5528712-a3-events</code>: visibility timeout 60 s (6× the worker timeout), retention 4 days, long polling 20 s, SSE. Redrive to <code>n5528712-a3-events-dlq</code> after <code>maxReceiveCount = 3</code> (retention 14 days).</td></tr>
+<tr><td>Async worker</td><td>AWS Lambda</td><td><code>n5528712-a3-event-worker</code>, Node.js 22, arm64, 256 MB, 10 s timeout. SQS event source mapping: batch 10, 2 s batching window, <code>ReportBatchItemFailures</code>, maximum concurrency 2.</td></tr>
+<tr><td>Read API</td><td>AWS Lambda (ALB target)</td><td><code>n5528712-a3-leaderboard-api</code>, 128 MB. Returns <code>Cache-Control: public, max-age=10</code> for the leaderboard.</td></tr>
+<tr><td>Structured store</td><td>Amazon DynamoDB</td><td><code>n5528712-a3-game</code>, on-demand, SSE, TTL on <code>ttl</code>, sparse GSI <code>GSI1</code> (§3.4).</td></tr>
+<tr><td>Configuration and secrets</td><td>Secrets Manager, SSM Parameter Store, environment</td><td>The HMAC key that signs anonymous player IDs is a generated Secrets Manager secret, read by tasks at start-up with the task role. The CloudFront→ALB header value is an SSM SecureString. All other settings are task-definition environment variables. The image contains no credentials or secrets.</td></tr>
+<tr><td>Monitoring</td><td>Amazon CloudWatch</td><td>JSON logs. Custom metrics through the Embedded Metric Format (namespace <code>n5528712/A3Game</code>: occupancy, humans, entities, tick p50/p99, snapshot bytes, worlds started/ended, events dropped). Dashboard <code>n5528712-a3</code>. Five alarms (DLQ not empty, worker errors, queue backlog, unhealthy targets, slow tick). CloudFront additional metrics (cache hit rate).</td></tr>
+</table>
+
+<h2 id="aws-constraints">3.2 Account constraints and how the design adapted</h2>
+<p>The shared CAB432 account applies explicit IAM deny policies to the student role. They were discovered during
+deployment, recorded in <code>docs/current-state.md</code>, and each forced a concrete design change:</p>
+<table>
+<tr><th style="width:27%">Denied action (verified)</th><th style="width:30%">Consequence</th><th>Adaptation</th></tr>
+<tr><td><code>iam:CreateRole</code></td><td>Roles can't be defined in the templates.</td><td>The pre-provisioned <code>Execution-Role-CAB432-ECS</code>, <code>Task-Role-CAB432-ECS</code> and <code>CAB432-Lambda-Role</code> are used. Their policies can't be read, so least privilege can't be demonstrated (a stated limitation). Features were verified empirically: SQS send, Secrets Manager read and task protection from tasks; SQS consume and DynamoDB from Lambda.</td></tr>
+<tr><td><code>ec2:CreateSecurityGroup</code></td><td>No dedicated SGs restricting the ALB to CloudFront or the tasks to the ALB.</td><td>The shared <code>CAB432SG</code> is used. Compensating controls: (1) tasks in <b>private subnets with no public IP</b>, so they are unreachable from the internet; (2) the ALB forwards only requests carrying the secret header that only CloudFront adds. Direct ALB requests receive 403 <span class="ev">[E19]</span>.</td></tr>
+<tr><td><code>acm:RequestCertificate</code></td><td>No TLS certificate for an ALB origin hostname.</td><td>Viewer ↔ CloudFront is HTTPS/WSS. CloudFront ↔ ALB is HTTP (a documented residual risk; with a certificate the origin policy would change to <code>https-only</code>).</td></tr>
+<tr><td><code>s3:DeleteBucket</code>, <code>s3:PutEncryptionConfiguration</code>, <code>s3:PutLifecycleConfiguration</code></td><td>The first data-stack deployment could not roll back its bucket (<code>ROLLBACK_FAILED</code>).</td><td>Buckets are created idempotently by <code>ensure-buckets.sh</code> and referenced by the stacks. Default SSE-S3 encryption still applies. New buckets have S3 attribute-based access control, so tags are applied with <code>s3control tag-resource</code>.</td></tr>
+<tr><td><code>logs:DeleteLogGroup</code>, <code>logs:PutRetentionPolicy</code></td><td>Same rollback problem; retention can't be set.</td><td>Log groups are created by script. Retention stays at the default (a cost note in §5).</td></tr>
+<tr><td><code>lambda:GetFunction</code> on not-yet-existing functions</td><td>CloudFormation's Lambda resource handler fails before creating the function.</td><td>Functions, the ALB invoke permission and the SQS event source mapping are created or updated by <code>deploy-lambdas.sh</code> (tagged <code>create-function</code> is permitted). The stack references the function ARN.</td></tr>
+</table>
+
+<h2 id="aws-sec">3.3 Security</h2>
+<ul>
+  <li><b>Public vs private access.</b> Only CloudFront is a public entry point. S3 is OAC-only (direct URL → 403). The ALB answers 403 without the origin secret. Tasks have no public IP <span class="ev">[E2, E19]</span>.</li>
+  <li><b>Transport.</b> HTTPS/WSS between player and edge, with HTTP redirected to HTTPS. The internal hop is discussed in §3.2.</li>
+  <li><b>Untrusted clients.</b> The server accepts only four message types (<code>join</code>, <code>in</code>, <code>respawn</code>, <code>ping</code>), validates every field (finite numbers, ranges, UUID/hex formats), caps message size at 1 KB, sanitises and truncates display names to 16 characters (rendered with <code>textContent</code>), rate-limits each socket with a token bucket (40 msg/s, sustained abuse closes the socket), and ignores any position, score or length a client sends. Unit and integration tests cover forged fields and malformed JSON.</li>
+  <li><b>Identity without accounts.</b> Anonymous player IDs are server-generated UUIDs signed with an HMAC key held in Secrets Manager. A client presenting an ID with a wrong signature gets a fresh ID, so leaderboard entries can't be hijacked (test: <i>"forged id is replaced"</i>).</li>
+  <li><b>Credentials.</b> No access keys exist anywhere: tasks and functions use IAM roles, and deploy scripts use the operator's SSO session.</li>
+</ul>
+
+<h2 id="aws-data">3.4 Data model</h2>
+<table>
+<tr><th>Entity</th><th>PK</th><th>SK</th><th>Notable attributes</th></tr>
+<tr><td>Player profile</td><td><code>PLAYER#&lt;id&gt;</code></td><td><code>PROFILE</code></td><td>displayName, bestScore, deaths, kills, sessions, playMs. <code>GSI1PK='LB'</code>, <code>GSI1SK=bestScore</code> written only once a score exists (sparse index).</td></tr>
+<tr><td>Death record</td><td><code>PLAYER#&lt;id&gt;</code></td><td><code>DEATH#&lt;time&gt;#&lt;eventId&gt;</code></td><td>score, length, kills, killedBy, survivedMs, worldId</td></tr>
+<tr><td>World record</td><td><code>WORLD#&lt;worldId&gt;</code></td><td><code>META</code></td><td>start/end times, humans, NPCs, lobby wait, peak humans, end reason</td></tr>
+<tr><td>Idempotency marker</td><td><code>EVENT#&lt;eventId&gt;</code></td><td><code>EVENT</code></td><td>type, processedAt, <code>ttl</code> = now + 7 days</td></tr>
+</table>
+<p>Access patterns: leaderboard = <code>Query GSI1 (GSI1PK='LB', descending, Limit N)</code>; player stats =
+<code>GetItem</code>; history = <code>Query PK, begins_with(SK,'DEATH#')</code>. No access pattern uses a Scan. The leaderboard
+partition key is a single value. At far more than this project's write rate (≫1,000 writes/s) it would be
+write-sharded (<code>LB#0..n</code>) and merged on read.</p>
+
+<h2 id="aws-iac">3.5 Infrastructure as code and observability</h2>
+<p>Four CloudFormation stacks (<code>data</code>, <code>backend</code>, <code>frontend</code>, <code>monitoring</code>) plus idempotent
+CLI scripts reproduce the deployment with one command (<code>infra/scripts/deploy.sh</code>). All parameters come from
+environment variables, and every taggable resource carries <code>purpose = assessment 3</code> and
+<code>qut-username = n5528712@qut.edu.au</code>. The data stack uses <code>DeletionPolicy: Retain</code> and is separate from
+compute, so the backend can be torn down without losing results. (The DynamoDB table survived an early failed
+stack and was <i>imported</i> into the new stack rather than deleted.)</p>
+<p>Game tasks emit one JSON log line per event with <code>taskId</code>, <code>worldId</code>, <code>playerId</code> and
+<code>eventId</code>, so a single event can be followed from <code>event_published</code> in the game log to
+<code>event_processed</code> in the worker log. Custom metrics use the Embedded Metric Format: a JSON line every 10 s
+that CloudWatch Logs converts into metrics, so no metrics API permission or SDK is needed. The metric dimension is
+the service name only, so the <i>Average</i> across tasks is the fleet-wide value the scaling policy consumes.</p>
+
+⟦SECTION_4_ONWARDS⟧
+</body>
+</html>

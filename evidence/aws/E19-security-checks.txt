@@ -1,0 +1,13 @@
+Security checks 2026-10-19T02:22:03Z
+Direct ALB /health without origin header -> 403
+Direct ALB WebSocket upgrade without header -> 403
+Direct ALB with a wrong header -> 403
+Direct S3 object URL -> 403
+CloudFront over plain HTTP -> 301 https://d3riy98bj197ur.cloudfront.net/
+Bucket public access block: True	True	True	True
+Task network interfaces (private IP / public IP):
+  38980ea19b614871a9377cfda252a9de: 172.31.86.217	none	subnet-05d0352bb15852524
+  ac1f0753ed6945e7801097ce13966c9d: 172.31.67.236	none	subnet-04cc288ea3b2e1e53
+  f371d05877cb44c08eccdd6865543983: 172.31.64.229	none	subnet-04cc288ea3b2e1e53
+  f542cf394a9e4bb7a420997e1aa7855f: 172.31.42.69	none	subnet-08e89ff0d9b49c9ae
+  fafc9a7cee7a434685fbd31b5942841a: 172.31.95.173	none	subnet-05d0352bb15852524

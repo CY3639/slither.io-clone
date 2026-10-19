@@ -1,0 +1,10 @@
+time                 desired running pending healthy occup%    cpu%    last-scaling-activity
+12:04:56             1       1       0       1       0.0       2.9     None
+{
+    "desired": 1,
+    "running": 1,
+    "taskDefinition": "arn:aws:ecs:ap-southeast-2:901444280953:task-definition/n5528712-a3-game:2",
+    "launchType": "FARGATE",
+    "platform": "LATEST"
+}
+service/n5528712-a3-cluster/n5528712-a3-game	1	6

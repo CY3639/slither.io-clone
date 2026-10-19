@@ -47,6 +47,10 @@ export function loadConfig() {
             maxMessagesPerSecond: int('MAX_MSGS_PER_SEC', 40, { min: 5, max: 1000 }),
             heartbeatMs: int('WS_HEARTBEAT_MS', 20000, { min: 1000, max: 120000 }),
             maxBufferedBytes: int('WS_MAX_BUFFERED', 1_000_000, { min: 10_000 }),
+            // permessage-deflate: snapshots are highly repetitive JSON, so compression with context
+            // takeover cuts egress (the dominant running cost) at a modest CPU cost per client.
+            deflate: bool('WS_DEFLATE', true),
+            deflateLevel: int('WS_DEFLATE_LEVEL', 1, { min: 0, max: 9 }),
         },
 
         events: {

@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  n5528712 CAB432 A3 - observability: one CloudWatch dashboard covering scaling (desired/running
+  tasks, occupancy, CPU), the game loop, the ALB, the async pipeline (SQS, Lambda, DynamoDB) and
+  CloudFront, plus alarms for the failure modes that need attention.
+
+Parameters:
+  Prefix: { Type: String, Default: n5528712-a3 }
+  QutUsername: { Type: String, Default: n5528712@qut.edu.au }
+  DistributionId: { Type: String }
+
+Resources:
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${Prefix}'
+      DashboardBody: !Sub
+        - |
+          {
+            "start": "-PT3H",
+            "periodOverride": "inherit",
+            "widgets": [
+              {"type":"text","x":0,"y":0,"width":24,"height":1,"properties":{"markdown":"## ${Prefix} Battle Snake — scaling, game loop, async pipeline, edge"}},
+              {"type":"metric","x":0,"y":1,"width":8,"height":6,"properties":{"title":"ECS tasks: desired vs running","region":"${AWS::Region}","stat":"Maximum","period":60,"view":"timeSeries",
+                "metrics":[["ECS/ContainerInsights","DesiredTaskCount","ServiceName","${Service}","ClusterName","${Cluster}"],[".","RunningTaskCount",".",".",".","."],[".","PendingTaskCount",".",".",".","."]]}},
+              {"type":"metric","x":8,"y":1,"width":8,"height":6,"properties":{"title":"World occupancy % (scaling metric, target 75)","region":"${AWS::Region}","stat":"Average","period":60,
+                "metrics":[["n5528712/A3Game","WorldOccupancyPct","ServiceName","${Service}"]],"annotations":{"horizontal":[{"value":75,"label":"target"}]},"yAxis":{"left":{"min":0,"max":100}}}},
+              {"type":"metric","x":16,"y":1,"width":8,"height":6,"properties":{"title":"ECS service CPU / memory %","region":"${AWS::Region}","stat":"Average","period":60,
+                "metrics":[["AWS/ECS","CPUUtilization","ServiceName","${Service}","ClusterName","${Cluster}"],[".","MemoryUtilization",".",".",".","."],["AWS/ECS","CPUUtilization","ServiceName","${Service}","ClusterName","${Cluster}",{"stat":"Maximum","label":"CPU max"}]],"yAxis":{"left":{"min":0,"max":100}}}},
+              {"type":"metric","x":0,"y":7,"width":8,"height":6,"properties":{"title":"Players and entities (fleet sum)","region":"${AWS::Region}","stat":"Sum","period":60,
+                "metrics":[["n5528712/A3Game","HumanPlayers","ServiceName","${Service}",{"stat":"Maximum","label":"Humans (max per sample)"}],[".","ConnectedClients",".",".",{"stat":"Maximum"}],[".","WorldActive",".",".",{"stat":"Sum","label":"Active world samples"}]]}},
+              {"type":"metric","x":8,"y":7,"width":8,"height":6,"properties":{"title":"Tick duration (ms)","region":"${AWS::Region}","period":60,
+                "metrics":[["n5528712/A3Game","TickDurationP50Ms","ServiceName","${Service}",{"stat":"Average"}],[".","TickDurationP99Ms",".",".",{"stat":"Maximum"}]],"annotations":{"horizontal":[{"value":33.3,"label":"tick budget (30 Hz)"}]}}},
+              {"type":"metric","x":16,"y":7,"width":8,"height":6,"properties":{"title":"ALB","region":"${AWS::Region}","period":60,
+                "metrics":[["AWS/ApplicationELB","ActiveConnectionCount","LoadBalancer","${AlbFullName}",{"stat":"Sum"}],[".","NewConnectionCount",".",".",{"stat":"Sum"}],["AWS/ApplicationELB","HealthyHostCount","TargetGroup","${GameTgFullName}","LoadBalancer","${AlbFullName}",{"stat":"Maximum"}],[".","UnHealthyHostCount",".",".",".",".",{"stat":"Maximum"}]]}},
+              {"type":"metric","x":0,"y":13,"width":8,"height":6,"properties":{"title":"SQS events queue / DLQ","region":"${AWS::Region}","stat":"Sum","period":60,
+                "metrics":[["AWS/SQS","NumberOfMessagesSent","QueueName","${QueueName}"],[".","NumberOfMessagesDeleted",".","."],[".","ApproximateNumberOfMessagesVisible",".",".",{"stat":"Maximum"}],[".","ApproximateNumberOfMessagesVisible","QueueName","${DLQName}",{"stat":"Maximum","label":"DLQ visible"}],[".","ApproximateAgeOfOldestMessage","QueueName","${QueueName}",{"stat":"Maximum","yAxis":"right"}]]}},
+              {"type":"metric","x":8,"y":13,"width":8,"height":6,"properties":{"title":"Lambda: event worker + leaderboard API","region":"${AWS::Region}","stat":"Sum","period":60,
+                "metrics":[["AWS/Lambda","Invocations","FunctionName","${Prefix}-event-worker"],[".","Errors",".","."],[".","Invocations","FunctionName","${Prefix}-leaderboard-api"],[".","Errors",".","."],[".","Duration","FunctionName","${Prefix}-event-worker",{"stat":"p95","yAxis":"right"}]]}},
+              {"type":"metric","x":16,"y":13,"width":8,"height":6,"properties":{"title":"DynamoDB consumed capacity","region":"${AWS::Region}","stat":"Sum","period":60,
+                "metrics":[["AWS/DynamoDB","ConsumedWriteCapacityUnits","TableName","${Prefix}-game"],[".","ConsumedReadCapacityUnits",".","."],[".","ThrottledRequests",".",".",{"stat":"Sum"}]]}},
+              {"type":"metric","x":0,"y":19,"width":12,"height":6,"properties":{"title":"CloudFront requests and cache hit rate","region":"us-east-1","period":300,
+                "metrics":[["AWS/CloudFront","Requests","Region","Global","DistributionId","${DistributionId}",{"stat":"Sum"}],[".","CacheHitRate",".",".",".",".",{"stat":"Average","yAxis":"right"}],[".","BytesDownloaded",".",".",".",".",{"stat":"Sum","yAxis":"right","visible":false}]]}},
+              {"type":"metric","x":12,"y":19,"width":12,"height":6,"properties":{"title":"Snapshot bandwidth per task (bytes/s) and events dropped","region":"${AWS::Region}","period":60,
+                "metrics":[["n5528712/A3Game","SnapshotBytesPerSec","ServiceName","${Service}",{"stat":"Average"}],[".","EventsDropped",".",".",{"stat":"Sum","yAxis":"right"}]]}}
+            ]
+          }
+        - Service: !Sub '${Prefix}-game'
+          Cluster: !Sub '${Prefix}-cluster'
+          AlbFullName: { 'Fn::ImportValue': !Sub '${Prefix}-AlbFullName' }
+          GameTgFullName: { 'Fn::ImportValue': !Sub '${Prefix}-GameTgFullName' }
+          QueueName: { 'Fn::ImportValue': !Sub '${Prefix}-QueueName' }
+          DLQName: { 'Fn::ImportValue': !Sub '${Prefix}-DLQName' }
+
+  # Poison messages need a human: something produced events the worker can't apply.
+  DlqNotEmptyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Prefix}-events-dlq-not-empty'
+      AlarmDescription: Events landed in the dead-letter queue after 3 failed attempts
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: { 'Fn::ImportValue': !Sub '${Prefix}-DLQName' } }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  WorkerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Prefix}-event-worker-errors'
+      AlarmDescription: Event worker invocations failing (unhandled errors)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Sub '${Prefix}-event-worker' }]
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  QueueBacklogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Prefix}-events-backlog'
+      AlarmDescription: Oldest event older than 5 minutes (worker not keeping up or failing)
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions: [{ Name: QueueName, Value: { 'Fn::ImportValue': !Sub '${Prefix}-QueueName' } }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 300
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  UnhealthyTargetsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Prefix}-unhealthy-game-targets'
+      AlarmDescription: A game task is failing ALB health checks
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: TargetGroup, Value: { 'Fn::ImportValue': !Sub '${Prefix}-GameTgFullName' } }
+        - { Name: LoadBalancer, Value: { 'Fn::ImportValue': !Sub '${Prefix}-AlbFullName' } }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  SlowTickAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${Prefix}-slow-game-tick'
+      AlarmDescription: p99 tick time above 20 ms (60% of the 33 ms budget) - tasks are CPU-starved
+      Namespace: n5528712/A3Game
+      MetricName: TickDurationP99Ms
+      Dimensions: [{ Name: ServiceName, Value: !Sub '${Prefix}-game' }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+Outputs:
+  DashboardUrl:
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${Prefix}'

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" font-family="Helvetica, Arial, sans-serif" font-size="11.5">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker>
+    <style>
+      .h{font-weight:bold;text-anchor:middle}
+      .hb{fill:#f5f5f5;stroke:#555;rx:5}
+      .life{stroke:#aaa;stroke-dasharray:4 4}
+      .m{stroke:#333;stroke-width:1.2;fill:none;marker-end:url(#a)}
+      .r{stroke:#2f6fb3;stroke-width:1.2;fill:none;marker-end:url(#a);stroke-dasharray:5 3}
+      .t{fill:#222}
+      .n{fill:#fff8d6;stroke:#c9a400;rx:4}
+      .sec{font-weight:bold;fill:#147eba;font-size:12px}
+    </style>
+  </defs>
+  <!-- participants: x centres -->
+  <g>
+    <rect class="hb" x="20" y="8" width="110" height="30"/><text class="h" x="75" y="28">Browser</text>
+    <rect class="hb" x="170" y="8" width="110" height="30"/><text class="h" x="225" y="28">CloudFront</text>
+    <rect class="hb" x="320" y="8" width="110" height="30"/><text class="h" x="375" y="28">ALB</text>
+    <rect class="hb" x="470" y="8" width="150" height="30"/><text class="h" x="545" y="28">ECS task (world)</text>
+    <rect class="hb" x="660" y="8" width="90" height="30"/><text class="h" x="705" y="28">SQS</text>
+    <rect class="hb" x="780" y="8" width="100" height="30"/><text class="h" x="830" y="28">Lambda worker</text>
+    <rect class="hb" x="900" y="8" width="90" height="30"/><text class="h" x="945" y="28">DynamoDB</text>
+  </g>
+  <path class="life" d="M75,38 V610 M225,38 V610 M375,38 V610 M545,38 V610 M705,38 V610 M830,38 V610 M945,38 V610"/>
+
+  <text class="sec" x="20" y="52">1 · Join and lobby</text>
+  <path class="m" d="M75,72 H225"/><text class="t" x="82" y="68">WSS upgrade /ws</text>
+  <path class="m" d="M225,84 H375"/><text class="t" x="232" y="80">+ X-Origin-Verify</text>
+  <path class="m" d="M375,96 H545"/><text class="t" x="382" y="92">round-robin to a healthy task</text>
+  <path class="m" d="M75,116 H545"/><text class="t" x="82" y="112">{t:"join", name, pid?, tok?}</text>
+  <rect class="n" x="560" y="104" width="300" height="34"/><text class="t" x="566" y="118">humans &lt; 4 → slot; sign anonymous id (HMAC)</text><text class="t" x="566" y="132">humans = 4 → ROOM_FULL, close 4001 → client retries</text>
+  <path class="r" d="M545,150 H75"/><text class="t" x="300" y="146">welcome {pid, tok, taskId} · lobby {endsIn ≤ 10 s}</text>
+  <rect class="n" x="560" y="156" width="300" height="34"/><text class="t" x="566" y="170">start at 4 humans or after 10 s: new World,</text><text class="t" x="566" y="184">spawn humans, fill NPCs to 50; task protection ON</text>
+  <path class="m" d="M545,198 H705"/><text class="t" x="560" y="210">WORLD_STARTED</text>
+  <path class="r" d="M545,222 H75"/><text class="t" x="300" y="218">start · food (full list) · spawn {id}</text>
+
+  <text class="sec" x="20" y="242">2 · Gameplay (authoritative)</text>
+  <path class="m" d="M75,266 H545"/><text class="t" x="82" y="262">{t:"in", a: heading, b: boost} ≤ 20 Hz (validated, rate-limited)</text>
+  <rect class="n" x="560" y="270" width="300" height="48"/><text class="t" x="566" y="284">30 Hz tick: NPC brains → move along head path</text><text class="t" x="566" y="298">→ spatial-grid eat/collide → deaths drop food</text><text class="t" x="566" y="312">→ respawn / rebalance NPC slots</text>
+  <path class="r" d="M545,332 H75"/><text class="t" x="230" y="328">15 Hz snapshot: visible snakes (delta-encoded), food Δ, leaderboard</text>
+  <rect class="n" x="20" y="340" width="190" height="34"/><text class="t" x="26" y="354">render 110 ms behind, interpolate</text><text class="t" x="26" y="368">between snapshots (60 fps)</text>
+
+  <text class="sec" x="20" y="394">3 · Death → durable result (async)</text>
+  <rect class="n" x="560" y="404" width="190" height="20"/><text class="t" x="566" y="418">edge hits another body → death</text>
+  <path class="r" d="M545,436 H75"/><text class="t" x="300" y="432">dead {score, by} → respawn in 3 s</text>
+  <path class="m" d="M545,452 H705"/><text class="t" x="552" y="466">PLAYER_DIED {eventId}</text>
+  <text class="t" x="552" y="478">batched SendMessageBatch, retry w/ backoff</text>
+  <path class="m" d="M705,494 H830"/><text class="t" x="712" y="490">ESM: batch ≤10 / 2 s</text>
+  <path class="m" d="M830,512 H945"/><text class="t" x="836" y="508">max(bestScore)</text>
+  <path class="m" d="M830,532 H945"/><text class="t" x="836" y="528">Tx: marker + counters</text>
+  <path class="r" d="M830,550 H705"/><text class="t" x="712" y="564">partial batch failures → retry ×3 → DLQ</text>
+
+  <text class="sec" x="20" y="574">4 · Leaderboard read</text>
+  <path class="m" d="M75,592 H225"/><text class="t" x="82" y="588">GET /api/leaderboard</text>
+  <path class="m" d="M225,604 H375"/><text class="t" x="232" y="600">miss only (10 s TTL)</text>
+  <text class="t" x="390" y="604">→ Lambda API → Query GSI1 (top N, no scan)</text>
+</svg>

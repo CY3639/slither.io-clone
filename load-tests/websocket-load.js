@@ -19,7 +19,7 @@ const CLIENTS = int(args.clients, 8);
 const DURATION_S = int(args.duration, 60);
 const RAMP_S = int(args.ramp, 10);
 const INPUT_HZ = int(args['input-hz'], 10);
-const MAX_ROOM_FULL = int(args['max-room-full-retries'], 300);
+const MAX_ROOM_FULL = int(args['max-room-full-retries'], 2000);
 const MAX_RECONNECTS = int(args['max-reconnects'], 20);
 const QUIET = Boolean(args.quiet);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +35,8 @@ const stats = {
     serverShutdowns: 0,
     deaths: 0,
     snapshots: 0,
-    bytes: 0,
+    bytes: 0, // decompressed message payload bytes
+    wireBytes: 0, // bytes actually received on the socket (after permessage-deflate)
     rtt: [],
     snapshotGaps: [],
     tasks: {}, // taskId -> clients currently joined
@@ -92,7 +93,20 @@ class VirtualPlayer {
         ws.on('error', () => {
             stats.connectErrors++;
         });
-        ws.on('close', (code) => this.onClose(code));
+        let socket = null;
+        let counted = false;
+        // Count bytes on the wire once per connection (the socket outlives the 'close' event).
+        this.countWire = () => {
+            if (!counted && socket) stats.wireBytes += socket.bytesRead;
+            counted = true;
+        };
+        ws.on('upgrade', (res) => {
+            socket = res.socket;
+        });
+        ws.on('close', (code) => {
+            this.countWire();
+            this.onClose(code);
+        });
     }
 
     onMessage(data) {
@@ -148,9 +162,11 @@ class VirtualPlayer {
         if (this.done || Date.now() > endAt) return;
         if (code === 4001) {
             // ROOM_FULL: retry quickly with jitter so the load balancer can pick another task.
+            // Same policy as the browser client: a few fast jittered retries to find a free world,
+            // then exponential backoff (max 5 s) while auto-scaling adds capacity.
             stats.roomFull++;
             if (++this.roomFullRetries > MAX_ROOM_FULL) return this.giveUp('room_full_retries_exhausted');
-            this.later(() => this.connect(), 150 + Math.random() * 450);
+            this.later(() => this.connect(), roomFullDelay(this.roomFullRetries));
             return;
         }
         if (code !== 4002) stats.unexpectedCloses++;
@@ -191,11 +207,18 @@ class VirtualPlayer {
     }
 
     stop() {
+        this.countWire?.();
         this.done = true;
         this.stopLoops();
         this.timers.forEach(clearTimeout);
         this.ws?.close(1000, 'load test finished');
     }
+}
+
+function roomFullDelay(attempt) {
+    if (attempt <= 5) return 150 + Math.random() * 450;
+    const base = Math.min(5000, 500 * 2 ** (attempt - 5));
+    return base / 2 + Math.random() * (base / 2);
 }
 
 function percentile(values, q) {
@@ -250,7 +273,7 @@ function summary() {
         distinctTasks: [...stats.taskSeen],
         distinctWorlds: [...stats.worlds],
         playersPerTaskAtEnd: Object.fromEntries(Object.entries(stats.tasks).filter(([, n]) => n > 0)),
-        gameplay: { snapshots: stats.snapshots, deaths: stats.deaths, megabytesReceived: +(stats.bytes / 1048576).toFixed(1) },
+        gameplay: { snapshots: stats.snapshots, deaths: stats.deaths, megabytesReceived: +(stats.bytes / 1048576).toFixed(1), megabytesOnWire: +(stats.wireBytes / 1048576).toFixed(1) },
         rttMs: { samples: stats.rtt.length, p50: percentile(stats.rtt, 0.5), p95: percentile(stats.rtt, 0.95), p99: percentile(stats.rtt, 0.99), max: percentile(stats.rtt, 1) },
         snapshotIntervalMs: { p50: percentile(stats.snapshotGaps, 0.5), p95: percentile(stats.snapshotGaps, 0.95), p99: percentile(stats.snapshotGaps, 0.99) },
     };

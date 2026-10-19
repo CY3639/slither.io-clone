@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker>
+    <style>
+      .box{fill:#fff;stroke:#333;stroke-width:1.4;rx:8}
+      .stateful{fill:#fff4e5;stroke:#c77700}
+      .async{fill:#eef6ff;stroke:#2f6fb3}
+      .edge{fill:#eefaf0;stroke:#2e8b57}
+      .t{font-weight:bold;text-anchor:middle}
+      .s{fill:#555;font-size:11px;text-anchor:middle}
+      .l{fill:#444;font-size:11px}
+      .ln{stroke:#444;stroke-width:1.4;fill:none;marker-end:url(#a)}
+      .dash{stroke-dasharray:5 4}
+      .zone{fill:none;stroke:#999;stroke-dasharray:6 5;rx:12}
+    </style>
+  </defs>
+
+  <!-- clients -->
+  <rect class="box" x="370" y="12" width="220" height="54"/>
+  <text class="t" x="480" y="35">Browser clients</text>
+  <text class="s" x="480" y="53">input · rendering · interpolation · UI</text>
+
+  <!-- edge -->
+  <rect class="box edge" x="370" y="100" width="220" height="54"/>
+  <text class="t" x="480" y="123">Edge cache / CDN</text>
+  <text class="s" x="480" y="141">TLS · static cache · 10 s API cache</text>
+  <path class="ln" d="M480,66 V100"/>
+  <text class="l" x="488" y="88">HTTPS / WSS (one origin)</text>
+
+  <!-- object storage -->
+  <rect class="box edge" x="60" y="100" width="200" height="54"/>
+  <text class="t" x="160" y="123">Object storage</text>
+  <text class="s" x="160" y="141">fingerprinted static client</text>
+  <path class="ln" d="M370,127 H260"/>
+  <text class="l" x="272" y="120">static (private access)</text>
+
+  <!-- private zone -->
+  <rect class="zone" x="40" y="182" width="880" height="360"/>
+  <text class="l" x="52" y="200">private application zone (reachable only through the CDN)</text>
+
+  <!-- LB -->
+  <rect class="box" x="370" y="212" width="220" height="54"/>
+  <text class="t" x="480" y="235">Load balancer</text>
+  <text class="s" x="480" y="253">dispatcher-push · health checks</text>
+  <path class="ln" d="M480,154 V212"/>
+  <text class="l" x="488" y="190">/ws, /api/* + secret header</text>
+
+  <!-- worker pool -->
+  <rect class="box stateful" x="250" y="300" width="460" height="104"/>
+  <text class="t" x="480" y="320">Containerised game workers (horizontally autoscaled)</text>
+  <rect class="box stateful" x="268" y="332" width="130" height="58"/><text class="t" x="333" y="355">World A</text><text class="s" x="333" y="373">≤4 humans + NPCs</text>
+  <rect class="box stateful" x="415" y="332" width="130" height="58"/><text class="t" x="480" y="355">World B</text><text class="s" x="480" y="373">50 snakes, 30 Hz</text>
+  <rect class="box stateful" x="562" y="332" width="130" height="58"/><text class="t" x="627" y="355">World N…</text><text class="s" x="627" y="373">no shared state</text>
+  <path class="ln" d="M450,266 V300"/>
+  <text class="l" x="330" y="288">new WebSocket → one worker</text>
+
+  <!-- autoscaler -->
+  <rect class="box" x="740" y="300" width="160" height="70"/>
+  <text class="t" x="820" y="323">Horizontal</text>
+  <text class="t" x="820" y="339">autoscaler</text>
+  <text class="s" x="820" y="358">occupancy + CPU targets</text>
+  <path class="ln dash" d="M740,340 H710"/>
+
+  <!-- read API -->
+  <rect class="box async" x="640" y="212" width="190" height="54"/>
+  <text class="t" x="735" y="235">Read API function</text>
+  <text class="s" x="735" y="253">leaderboard / player</text>
+  <path class="ln" d="M590,239 H640"/>
+
+  <!-- queue -->
+  <rect class="box async" x="60" y="430" width="180" height="54"/>
+  <text class="t" x="150" y="453">Message queue</text>
+  <text class="s" x="150" y="471">at-least-once · DLQ</text>
+  <path class="ln" d="M300,404 L200,430"/>
+  <text class="l" x="175" y="418">domain events</text>
+
+  <!-- worker fn -->
+  <rect class="box async" x="300" y="460" width="180" height="54"/>
+  <text class="t" x="390" y="483">Async worker</text>
+  <text class="s" x="390" y="501">idempotent, batched</text>
+  <path class="ln" d="M240,465 L300,482"/>
+
+  <!-- datastore -->
+  <rect class="box async" x="560" y="460" width="230" height="54"/>
+  <text class="t" x="675" y="483">Structured key-value store</text>
+  <text class="s" x="675" y="501">profiles · results · ranked index</text>
+  <path class="ln" d="M480,487 H560"/>
+  <path class="ln" d="M735,266 V460"/>
+
+  <!-- monitoring -->
+  <rect class="box" x="60" y="300" width="160" height="70"/>
+  <text class="t" x="140" y="325">Monitoring</text>
+  <text class="s" x="140" y="343">logs · metrics · alarms</text>
+  <text class="s" x="140" y="358">dashboards</text>
+  <path class="ln dash" d="M250,340 H220"/>
+</svg>

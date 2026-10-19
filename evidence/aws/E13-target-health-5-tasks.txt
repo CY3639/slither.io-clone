@@ -1,0 +1,5 @@
+172.31.64.229	ap-southeast-2a	initial
+172.31.86.217	ap-southeast-2c	healthy
+172.31.82.23	ap-southeast-2c	healthy
+172.31.67.236	ap-southeast-2a	healthy
+172.31.42.69	ap-southeast-2b	healthy

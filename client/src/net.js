@@ -1,14 +1,15 @@
 /**
  * WebSocket connection with bounded, jittered reconnect.
  *
- *  - ROOM_FULL (close 4001): this world has 4 humans. Retry quickly (150-600 ms jitter) so the
- *    load balancer can route the new connection to another world/task.
+ *  - ROOM_FULL (close 4001): this world has 4 humans. The first few retries are quick (150-600 ms
+ *    jitter) so the load balancer can route the new connection to another world/task; if every
+ *    world is full, back off exponentially (max 5 s) for ~3 minutes while auto-scaling adds tasks.
  *  - Server shutdown (4002): reconnect after the delay the server suggested.
  *  - Anything else: exponential backoff with jitter, at most MAX_ATTEMPTS, then give up and
  *    show a Retry button. Never retry forever.
  */
 var MAX_ATTEMPTS = 10;
-var MAX_ROOM_FULL_RETRIES = 40;
+var MAX_ROOM_FULL_RETRIES = 45; // 5 fast + ~40 at <=5 s: about 3 minutes, enough for a scale-out
 var STORAGE_KEY = 'battlesnake.identity';
 
 function GameConnection(opts) {
@@ -96,8 +97,13 @@ GameConnection.prototype = {
         if (ev.code === 4001) {
             this.roomFullRetries++;
             if (this.roomFullRetries > MAX_ROOM_FULL_RETRIES) return this.fail('All worlds are full. Try again shortly.');
-            delay = 150 + Math.random() * 450;
-            this.onStatus('room_full', { retries: this.roomFullRetries });
+            if (this.roomFullRetries <= 5) {
+                delay = 150 + Math.random() * 450;
+            } else {
+                var cap = Math.min(5000, 500 * Math.pow(2, this.roomFullRetries - 5));
+                delay = cap / 2 + Math.random() * (cap / 2);
+            }
+            this.onStatus('room_full', { retries: this.roomFullRetries, delayMs: Math.round(delay) });
         } else if (ev.code === 4002 || ev.code === 4003) {
             delay = this.suggestedRetryMs || 300 + Math.random() * 700;
             this.suggestedRetryMs = null;

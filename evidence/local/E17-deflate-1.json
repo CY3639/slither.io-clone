@@ -1,0 +1,49 @@
+{
+  "url": "ws://localhost:8083/ws",
+  "startedAt": "2026-10-19T02:12:30.723Z",
+  "finishedAt": "2026-10-19T02:13:10.727Z",
+  "config": {
+    "clients": 4,
+    "durationS": 40,
+    "rampS": 1,
+    "inputHz": 10
+  },
+  "connections": {
+    "attempts": 4,
+    "opened": 4,
+    "joined": 4,
+    "roomFullResponses": 0,
+    "connectErrors": 0,
+    "unexpectedCloses": 0,
+    "serverShutdownNotices": 0,
+    "playersGaveUp": 0,
+    "inWorldAtEnd": 4
+  },
+  "distinctTasks": [
+    "a8dd7054"
+  ],
+  "distinctWorlds": [
+    "a8dd7054-1"
+  ],
+  "playersPerTaskAtEnd": {
+    "a8dd7054": 4
+  },
+  "gameplay": {
+    "snapshots": 2352,
+    "deaths": 10,
+    "megabytesReceived": 8.8,
+    "megabytesOnWire": 2.3
+  },
+  "rttMs": {
+    "samples": 76,
+    "p50": 2,
+    "p95": 5,
+    "p99": 62,
+    "max": 62
+  },
+  "snapshotIntervalMs": {
+    "p50": 67,
+    "p95": 72,
+    "p99": 100
+  }
+}

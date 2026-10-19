@@ -119,7 +119,17 @@ export function createGameServer({ config, room, logger, identity, getLastTickAt
         }
     }
 
-    const wss = new WebSocketServer({ noServer: true, maxPayload: net.maxPayloadBytes, perMessageDeflate: false });
+    const wss = new WebSocketServer({
+        noServer: true,
+        maxPayload: net.maxPayloadBytes,
+        perMessageDeflate: net.deflate
+            ? {
+                  zlibDeflateOptions: { level: net.deflateLevel, memLevel: 7 },
+                  threshold: 256, // tiny messages (pong, err) are not worth compressing
+                  concurrencyLimit: 4,
+              }
+            : false,
+    });
 
     httpServer.on('upgrade', (req, socket, head) => {
         const { pathname } = new URL(req.url, 'http://localhost');
@@ -223,8 +233,12 @@ export function createGameServer({ config, room, logger, identity, getLastTickAt
             return new Promise((resolve) => httpServer.listen(port, () => resolve(httpServer.address().port)));
         },
         /** Stop accepting connections. Existing sockets are closed by room.drain(). */
-        async close() {
+        async close(graceMs = 1500) {
             clearInterval(heartbeat);
+            // room.drain() already sent `bye` and started a close handshake on every socket. Give
+            // them a moment to flush (compression makes sends asynchronous) before forcing it.
+            const deadline = Date.now() + graceMs;
+            while (connections.size && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
             for (const conn of connections) conn.ws.terminate();
             wss.close();
             await new Promise((resolve) => httpServer.close(() => resolve()));

@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker>
+    <style>
+      .svc{stroke-width:1.5;rx:6}
+      .net{fill:#f3ecfb;stroke:#8c4fff}
+      .cmp{fill:#fff1e0;stroke:#ed7100}
+      .sto{fill:#e9f6ec;stroke:#3f8624}
+      .int{fill:#fdeaf1;stroke:#e7157b}
+      .db{fill:#e8eefc;stroke:#2e27ad}
+      .mgt{fill:#fbe9f5;stroke:#e7157b}
+      .sec{fill:#fdecea;stroke:#dd344c}
+      .tag{font-size:10px;font-weight:bold;fill:#fff}
+      .t{font-weight:bold;text-anchor:middle}
+      .s{fill:#444;font-size:10.5px;text-anchor:middle}
+      .l{fill:#333;font-size:10.5px}
+      .ln{stroke:#333;stroke-width:1.3;fill:none;marker-end:url(#a)}
+      .dash{stroke-dasharray:5 4}
+      .group{fill:none;stroke-width:1.3;rx:10}
+    </style>
+  </defs>
+
+  <!-- region -->
+  <rect class="group" x="10" y="150" width="980" height="480" stroke="#147eba" stroke-dasharray="7 5"/>
+  <text x="22" y="168" fill="#147eba" font-weight="bold">AWS Region ap-southeast-2 (Sydney) · account 901444280953</text>
+  <rect class="group" x="200" y="180" width="560" height="300" stroke="#8c4fff"/>
+  <text x="212" y="197" fill="#8c4fff" font-weight="bold">VPC vpc-007bab53289655834 (shared Control Tower VPC)</text>
+  <rect class="group" x="215" y="208" width="530" height="82" stroke="#7aa116" stroke-dasharray="4 3"/>
+  <text x="225" y="223" fill="#5f7a10" font-size="11">public subnets ×3 AZ</text>
+  <rect class="group" x="215" y="300" width="530" height="170" stroke="#147eba" stroke-dasharray="4 3"/>
+  <text x="225" y="315" fill="#147eba" font-size="11">private subnets ×3 AZ (no public IP)</text>
+
+  <!-- users & edge -->
+  <rect class="svc" x="420" y="10" width="160" height="44" fill="#fff" stroke="#333"/>
+  <text class="t" x="500" y="30">Players' browsers</text><text class="s" x="500" y="45">Phaser 2 client</text>
+  <rect class="svc net" x="400" y="80" width="200" height="56"/>
+  <text class="t" x="500" y="100">Amazon CloudFront</text>
+  <text class="s" x="500" y="115">d3riy98bj197ur.cloudfront.net</text>
+  <text class="s" x="500" y="128">PriceClass_All · BNE edge · OAC</text>
+  <path class="ln" d="M500,54 V80"/><text class="l" x="508" y="72">HTTPS / WSS</text>
+
+  <rect class="svc sto" x="40" y="80" width="200" height="56"/>
+  <text class="t" x="140" y="100">Amazon S3</text>
+  <text class="s" x="140" y="115">n5528712-a3-frontend-…</text>
+  <text class="s" x="140" y="128">private · OAC-only bucket policy</text>
+  <path class="ln" d="M400,108 H240"/><text class="l" x="260" y="101">default behaviour (cached 1 y)</text>
+
+  <!-- ALB -->
+  <rect class="svc net" x="390" y="232" width="220" height="50"/>
+  <text class="t" x="500" y="252">Application Load Balancer</text>
+  <text class="s" x="500" y="268">n5528712-a3-alb · rule: X-Origin-Verify else 403</text>
+  <path class="ln" d="M500,136 V232"/><text class="l" x="508" y="160">/ws · /api/* · /health · /status</text>
+  <text class="l" x="508" y="174">+ secret origin header (HTTP)</text>
+
+  <!-- ECS -->
+  <rect class="svc cmp" x="240" y="330" width="380" height="128"/>
+  <text class="t" x="430" y="348">Amazon ECS on AWS Fargate · n5528712-a3-cluster</text>
+  <text class="s" x="430" y="362">service n5528712-a3-game · 0.25 vCPU / 0.5 GB · ARM64 · Container Insights</text>
+  <rect class="svc cmp" x="255" y="372" width="108" height="72"/><text class="t" x="309" y="394">task</text><text class="s" x="309" y="410">world A</text><text class="s" x="309" y="424">4 humans+46 NPC</text>
+  <rect class="svc cmp" x="376" y="372" width="108" height="72"/><text class="t" x="430" y="394">task</text><text class="s" x="430" y="410">world B</text><text class="s" x="430" y="424">scale-in protected</text>
+  <rect class="svc cmp" x="497" y="372" width="108" height="72"/><text class="t" x="551" y="394">task …6</text><text class="s" x="551" y="410">world N</text><text class="s" x="551" y="424">min 1 · max 6</text>
+  <path class="ln" d="M470,282 V330"/><text class="l" x="478" y="318">target group ip:8080 · health /ready</text>
+
+  <rect class="svc mgt" x="790" y="340" width="180" height="70"/>
+  <text class="t" x="880" y="360">Application Auto Scaling</text>
+  <text class="s" x="880" y="376">target tracking:</text>
+  <text class="s" x="880" y="390">WorldOccupancyPct 75 %</text>
+  <text class="s" x="880" y="403">ECS CPU 50 %</text>
+  <path class="ln dash" d="M790,380 H620"/>
+
+  <!-- API lambda -->
+  <rect class="svc cmp" x="790" y="232" width="180" height="56"/>
+  <text class="t" x="880" y="252">AWS Lambda</text>
+  <text class="s" x="880" y="267">n5528712-a3-leaderboard-api</text>
+  <text class="s" x="880" y="280">ALB target · Node 22 arm64</text>
+  <path class="ln" d="M610,257 H790"/><text class="l" x="640" y="250">/api/* (Lambda target group)</text>
+
+  <!-- async -->
+  <rect class="svc int" x="40" y="500" width="190" height="60"/>
+  <text class="t" x="135" y="520">Amazon SQS</text>
+  <text class="s" x="135" y="535">n5528712-a3-events (vis 60 s)</text>
+  <text class="s" x="135" y="549">→ DLQ after 3 receives</text>
+  <path class="ln" d="M290,458 L200,500"/><text class="l" x="100" y="480">SendMessageBatch (events)</text>
+
+  <rect class="svc cmp" x="290" y="560" width="200" height="56"/>
+  <text class="t" x="390" y="580">AWS Lambda</text>
+  <text class="s" x="390" y="595">n5528712-a3-event-worker</text>
+  <text class="s" x="390" y="608">batch 10 · partial failures · max 2</text>
+  <path class="ln" d="M230,540 L290,580"/>
+
+  <rect class="svc db" x="580" y="560" width="220" height="56"/>
+  <text class="t" x="690" y="580">Amazon DynamoDB</text>
+  <text class="s" x="690" y="595">n5528712-a3-game · on-demand</text>
+  <text class="s" x="690" y="608">PK/SK + sparse GSI1 leaderboard · TTL</text>
+  <path class="ln" d="M490,588 H580"/><text class="l" x="494" y="580">TransactWrite</text>
+  <path class="ln" d="M880,288 L760,560"/><text class="l" x="830" y="440">Query GSI1</text>
+
+  <!-- supporting -->
+  <rect class="svc cmp" x="40" y="330" width="150" height="46"/>
+  <text class="t" x="115" y="350">Amazon ECR</text><text class="s" x="115" y="365">a3/n5528712-a3-game</text>
+  <path class="ln dash" d="M190,353 H240"/>
+  <rect class="svc sec" x="40" y="390" width="150" height="46"/>
+  <text class="t" x="115" y="410">Secrets Manager</text><text class="s" x="115" y="425">session signing key</text>
+  <path class="ln dash" d="M190,413 H240"/>
+  <rect class="svc mgt" x="40" y="230" width="150" height="80"/>
+  <text class="t" x="115" y="250">Amazon CloudWatch</text>
+  <text class="s" x="115" y="266">JSON logs · EMF metrics</text>
+  <text class="s" x="115" y="280">dashboard n5528712-a3</text>
+  <text class="s" x="115" y="294">5 alarms</text>
+  <rect class="svc sec" x="820" y="560" width="150" height="56"/>
+  <text class="t" x="895" y="580">IAM</text><text class="s" x="895" y="595">pre-provisioned CAB432</text><text class="s" x="895" y="608">ECS + Lambda roles</text>
+  <text class="l" x="22" y="624" fill="#147eba">IaC: CloudFormation (data · backend · frontend · monitoring) + CLI scripts</text>
+</svg>

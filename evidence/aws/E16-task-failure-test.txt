@@ -1,0 +1,36 @@
+Resilience test: stop task c01769f7 (hosting 4 players) during load
+stop-task issued at 2026-10-19T02:18:17Z (12:18:17 AEST)
+DEACTIVATING	STOPPED	E16 resilience test: simulated task failure
+
+Load-test view (5 s samples) around the stop:
+[ 720s] in-world=14/14 roomFull=910 errors=0 closes=0 rx=1486KiB/s snaps/s=210 rtt p50=16 p95=24ms tasks{f542cf39:4 c01769f7:4 ac1f0753:4 38980ea1:2}
+[ 725s] in-world=14/14 roomFull=910 errors=0 closes=0 rx=1453KiB/s snaps/s=210 rtt p50=16 p95=24ms tasks{f542cf39:4 c01769f7:4 ac1f0753:4 38980ea1:2}
+[ 730s] in-world=14/14 roomFull=910 errors=0 closes=0 rx=1444KiB/s snaps/s=210 rtt p50=16 p95=25ms tasks{f542cf39:4 c01769f7:4 ac1f0753:4 38980ea1:2}
+[ 735s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1188KiB/s snaps/s=190 rtt p50=16 p95=29ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 740s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1148KiB/s snaps/s=180 rtt p50=16 p95=26ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 745s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1391KiB/s snaps/s=190 rtt p50=16 p95=26ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 750s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1388KiB/s snaps/s=210 rtt p50=16 p95=26ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 755s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1314KiB/s snaps/s=210 rtt p50=16 p95=26ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 760s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1341KiB/s snaps/s=210 rtt p50=16 p95=26ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+[ 765s] in-world=14/14 roomFull=913 errors=0 closes=4 rx=1287KiB/s snaps/s=210 rtt p50=16 p95=27ms tasks{f542cf39:4 ac1f0753:4 38980ea1:4 f371d058:2}
+
+ECS service events:
+2026-10-19T12:19:47.817000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:19:28.041000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:19:00.496000+10:00	(service n5528712-a3-game) has started 1 tasks: (task fafc9a7cee7a434685fbd31b5942841a).
+2026-10-19T12:18:59.791000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:18:59.786000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:18:14.196000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:17:45.716000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:17:27.021000+10:00	(service n5528712-a3-game) has started 1 tasks: (task f371d05877cb44c08eccdd6865543983).
+12:20:06
+2026-10-19T12:18:18.242000+10:00	2026-10-19T12:19:36.045000+10:00	2026-10-19T12:20:01.442000+10:00	0
+
+[exited with code 0]
+2026-10-19T02:19:15 {"ts":"2026-10-19T02:19:15.235Z","level":"info","msg":"player_left","service":"game","taskId":"c01769f7","playerId":"d18f6e6b-656e-4280-806b-1df1bccc12be","worldId":"c01769f7-1","reason":"disconnect","humans":3
+2026-10-19T02:19:15 {"ts":"2026-10-19T02:19:15.872Z","level":"info","msg":"player_left","service":"game","taskId":"c01769f7","playerId":"3dcd20de-de8c-4349-92c3-966a26d05db2","worldId":"c01769f7-1","reason":"disconnect","humans":2
+2026-10-19T02:19:15 {"ts":"2026-10-19T02:19:15.872Z","level":"info","msg":"player_left","service":"game","taskId":"c01769f7","playerId":"428b55a8-47f3-44a1-8d84-3e8c7c0696ff","worldId":"c01769f7-1","reason":"disconnect","humans":1
+2026-10-19T02:19:15 {"ts":"2026-10-19T02:19:15.873Z","level":"info","msg":"player_left","service":"game","taskId":"c01769f7","playerId":"575456b6-bef9-42f7-ba78-480d9f6041f3","worldId":"c01769f7-1","reason":"disconnect","humans":0
+2026-10-19T02:19:15 {"ts":"2026-10-19T02:19:15.873Z","level":"info","msg":"world_completed","service":"game","taskId":"c01769f7","worldId":"c01769f7-1","reason":"empty","durationMs":501575}
+2026-10-19T02:19:24 {"ts":"2026-10-19T02:19:24.942Z","level":"info","msg":"shutdown_started","service":"game","taskId":"c01769f7","reason":"SIGTERM","humans":0}
+2026-10-19T02:19:24 {"ts":"2026-10-19T02:19:24.989Z","level":"info","msg":"shutdown_complete","service":"game","taskId":"c01769f7","reason":"SIGTERM","eventFlush":"flushed","published":206,"dropped":0}

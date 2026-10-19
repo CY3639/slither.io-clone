@@ -1,60 +1,120 @@
-See the final demo of this series: https://loonride.com/examples/slither-io/slither-io/
+# Battle Snake — cloud-native multiplayer Slither.io (CAB432 Assessment 3, n5528712)
 
-Part 1 of the tutorial series: https://loonride.com/learn/phaser/slither-io-part-1
+A server-authoritative multiplayer version of Loonride's Phaser Slither.io tutorial clone, deployed
+on AWS to demonstrate container compute with ECS Service Auto Scaling, load distribution, edge
+caching, WebSockets, asynchronous event processing and structured persistence.
 
-Video - Coding Slither.io in One Week with JavaScript: https://youtu.be/Nlo8LyO8HAQ
+* **Live:** `https://d3riy98bj197ur.cloudfront.net/` (while deployed)
+* **Original game:** `slither-io/` and `part-*/` are the untouched upstream tutorial
+  ([Loonride, 2017](https://github.com/Loonride/slither.io-clone)). Its sprites, Phaser CE 2.6.2
+  renderer, movement constants, growth, death and food-drop rules are reused. P2 physics was
+  replaced by a headless server simulation.
 
-![alt text](https://loonride.com/asset/learn/slither-io/main.png "how to make Slither.io Part 1")
+## Architecture
 
+```
+Browser (Phaser 2 renderer, input, interpolation)
+   │ HTTPS / WSS (one origin)
+   ▼
+CloudFront ──(OAC)──► S3            static client (fingerprinted, 1-year immutable cache)
+   │ /ws, /api/*, /health, /status + secret origin header
+   ▼
+ALB ──► ECS Fargate service (1–6 tasks, arm64)     one task = one authoritative world (≤4 humans + NPCs = 50 snakes)
+   │         │ domain events (PLAYER_DIED, SESSION_ENDED, WORLD_STARTED, WORLD_COMPLETED)
+   │         ▼
+   │       SQS (+DLQ) ──► Lambda event worker ──► DynamoDB (single table + leaderboard GSI)
+   └──► Lambda leaderboard API ◄────────────────────────┘   (edge-cached 10 s)
+CloudWatch: JSON logs, EMF custom metrics (occupancy, tick time…), dashboard, alarms
+ECS Service Auto Scaling: target tracking on WorldOccupancyPct (75 %) and CPU (50 %)
+```
 
-### About this Clone
+Design documents: [`docs/`](docs/), covering requirements, the vendor-agnostic and AWS architectures,
+the assessment pattern matrix, the evidence register and final test results.
 
-This clone of the game Slither.io was created to teach game design concepts with JavaScript and the Phaser game framework. It showcases physics collisions and organization concepts of the game without implementing the multiplayer server aspect.
+## Repository layout
 
-**Cloned Features:**
+| Path | What |
+|------|------|
+| `server/` | Node.js 22 game server: world simulation, lobby/room, WebSocket protocol, SQS publisher, metrics, Dockerfile |
+| `client/` | Phaser 2 client (rendering, input, interpolation, UI) + `build.mjs` (fingerprinted production build) |
+| `lambda/` | `event-worker` (SQS → DynamoDB, idempotent) and `leaderboard-api` (ALB target) + shared store code |
+| `tools/` | `local-cloud.mjs` (runs the real Lambda handlers locally) and `dev.mjs` (starts everything) |
+| `infra/` | CloudFormation templates and deploy/evidence scripts. See [`infra/README.md`](infra/README.md) |
+| `load-tests/` | Synthetic WebSocket players for load and scaling tests |
+| `tests/` | Smoke test, CloudFront cache test, scaling watcher |
+| `evidence/` | Captured outputs backing every report claim |
 
-* Player and bot snakes
-* Mouse and arrow-key controls
-* Speeding up with spacebar
-* Death from head-on collisions
-* Random food placed at start
-* Snake growth from eating
-* Food dropped on death
-* Shadows and interactive eyes
+## Run locally
 
+Requires Node.js 22+.
 
-### Contributing
+```bash
+npm run install:all
+npm run dev            # game server :8080 (serves the client) + local cloud emulator :8090
+```
 
-Because this source code has a tutorial series built around it, I will only be accepting minor changes. If there is great interest in furthering this clone, I will create a new repository to take contributions. Show your interest by emailing me at contact@loonride.com
+Open `http://localhost:8080` in two browsers (or one normal and one private window, since tabs in the
+same browser share the anonymous player ID) and join within 10 s to share a world. The local
+cloud emulator receives events over HTTP, runs the real `event-worker` handler against an
+in-memory store, and serves `/api/leaderboard`.
 
+Useful environment variables (`server/src/config.js`): `LOBBY_MS` (10000), `MAX_HUMANS` (4),
+`TOTAL_SNAKES` (50), `TICK_RATE` (30), `SNAPSHOT_RATE` (15), `WORLD_RADIUS` (2400),
+`EVENT_SINK` (`log` | `http` | `sqs`).
 
-### Tutorial Links
+## Tests
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-1">How to make Slither.io with JavaScript: Part 1 - Introduction</a>
+```bash
+npm test                                   # 37 server tests (unit + WebSocket integration) + 13 Lambda tests
+tests/smoke.sh https://<distribution>.cloudfront.net
+tests/cache-test.sh https://<distribution>.cloudfront.net 5
+```
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-2">How to make Slither.io with JavaScript: Part 2 - Snake</a>
+## Docker
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-3">How to make Slither.io with JavaScript: Part 3 - Players & Bots</a>
+```bash
+docker build -t n5528712-a3-game server
+docker run --rm -p 8080:8080 --cpus 0.25 --memory 512m -e EVENT_SINK=log n5528712-a3-game
+curl localhost:8080/health
+```
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-4">How to make Slither.io with JavaScript: Part 4 - Collisions</a>
+The image is `node:22-alpine`, runs as the non-root `node` user, has a `HEALTHCHECK`, and takes
+all configuration from environment variables (no credentials inside).
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-5">How to make Slither.io with JavaScript: Part 5 - Snake Eyes</a>
+## Deploy to AWS
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-6">How to make Slither.io with JavaScript: Part 6 - Snake Shadows</a>
+```bash
+aws sso login
+AWS_PROFILE=default infra/scripts/deploy.sh
+```
 
-<a href="https://loonride.com/learn/phaser/slither-io-part-7">How to make Slither.io with JavaScript: Part 7 - Food & Conclusion</a>
+See [`infra/README.md`](infra/README.md) for the step order and the account-policy workarounds
+(no IAM role/SG/certificate creation, no bucket/log-group deletion for the student role).
 
+## Load testing / scaling demo
 
-### Demo Links
+```bash
+tests/watch-scaling.sh 30 &                                   # desired/running tasks, occupancy, CPU
+node load-tests/websocket-load.js --url wss://<distribution>.cloudfront.net/ws \
+     --clients 14 --duration 1500 --ramp 30
+```
 
-<a href="https://loonride.com/examples/slither-io/part-2/">Part 2 Demo</a>
+Each virtual player joins, retries `ROOM_FULL` (fast jitter, then backoff while capacity is added),
+plays with plausible input, respawns and measures RTT. The summary includes how players were
+distributed across tasks.
 
-<a href="https://loonride.com/examples/slither-io/part-3/">Part 3 Demo</a>
+## Evidence
 
-<a href="https://loonride.com/examples/slither-io/part-4/">Part 4 Demo</a>
+`infra/scripts/collect-evidence.sh` snapshots inventory, scaling activities, target health,
+CloudWatch metric exports, queue depths and the leaderboard into `evidence/aws/`. See
+[`docs/evidence-register.md`](docs/evidence-register.md) and
+[`evidence/screenshots-needed.md`](evidence/screenshots-needed.md).
 
-<a href="https://loonride.com/examples/slither-io/part-5/">Part 5 Demo</a>
+## Cleanup
 
-<a href="https://loonride.com/examples/slither-io/part-6/">Part 6 Demo</a>
+See [`infra/CLEANUP.md`](infra/CLEANUP.md). Nothing is torn down automatically.
 
-<a href="https://loonride.com/examples/slither-io/slither-io/">Final Demo</a>
+## Attribution
+
+Original game code and assets: Loonride, *How to make Slither.io with JavaScript* (2017),
+https://github.com/Loonride/slither.io-clone. Phaser CE 2.6.2 © Photon Storm Ltd (MIT).

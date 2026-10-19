@@ -76,7 +76,10 @@ var UI = (function () {
             var text = STATUS_TEXT[state] || state;
             if (state === 'reconnecting' && info.attempt) text += ' (' + info.attempt + '/' + info.max + ')';
             if (state === 'reconnecting' && info.reason) text = 'Server restarting — reconnecting…';
-            if (state === 'room_full') text += ' (' + info.retries + ')';
+            if (state === 'room_full') {
+                text = info.retries <= 5 ? 'World full — finding another… (' + info.retries + ')'
+                    : 'All worlds full — capacity is being added, retrying in ' + Math.ceil(info.delayMs / 1000) + ' s';
+            }
             el.textContent = text;
             el.className = 'pill status-' + state;
             var banner = state === 'reconnecting' || state === 'room_full' || state === 'failed';
