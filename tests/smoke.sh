@@ -20,8 +20,8 @@ check "status endpoint" "$bucket_host" ok
 ws="${BASE/https:/wss:}/ws"
 out="$(mktemp)"
 node "$(dirname "$0")/../load-tests/websocket-load.js" --url "$ws" --clients 1 --duration 16 --ramp 0 --quiet --out "$out" >/dev/null
-check "WebSocket join" "$(node -e 'console.log(require(process.argv[1]).connections.joined)' "$out")" 1
-check "WebSocket snapshots received" "$(node -e 'console.log(require(process.argv[1]).gameplay.snapshots > 10 ? "yes" : "no")' "$out")" yes
+check "WebSocket join" "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).connections.joined)' "$out")" 1
+check "WebSocket snapshots received" "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).gameplay.snapshots > 10 ? "yes" : "no")' "$out")" yes
 rm -f "$out"
 echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]]

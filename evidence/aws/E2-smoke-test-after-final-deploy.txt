@@ -1,0 +1,10 @@
+PASS  index.html served (200)
+PASS  HTTP redirects to HTTPS (301)
+PASS  fingerprinted bundle immutable (cache-control: public, max-age=31536000, immutable)
+PASS  game /health via CloudFront ("status":"ok")
+PASS  leaderboard API (200)
+PASS  bad player id rejected (400)
+PASS  status endpoint (ok)
+PASS  WebSocket join (1)
+PASS  WebSocket snapshots received (yes)
+9 passed, 0 failed
