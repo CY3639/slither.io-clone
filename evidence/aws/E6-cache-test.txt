@@ -1,0 +1,25 @@
+Run at 2026-10-19T02:02:11Z
+== fingerprinted JS bundle (S3 origin, immutable 1y): https://d3riy98bj197ur.cloudfront.net/app.51c63e391e.js
+#    x-cache                    age    status   time_s     cache-control
+1    Hit from cloudfront        41     200      0.048784   public, max-age=31536000, immutable
+2    Hit from cloudfront        42     200      0.021602   public, max-age=31536000, immutable
+3    Hit from cloudfront        43     200      0.021732   public, max-age=31536000, immutable
+4    Hit from cloudfront        44     200      0.020809   public, max-age=31536000, immutable
+5    Hit from cloudfront        45     200      0.020483   public, max-age=31536000, immutable
+   edge POP: BNE50-P3
+== leaderboard API (ALB->Lambda origin, 10 s TTL): https://d3riy98bj197ur.cloudfront.net/api/leaderboard?limit=10
+#    x-cache                    age    status   time_s     cache-control
+1    Miss from cloudfront              200      0.615473   public, max-age=10
+2    Hit from cloudfront        1      200      0.031504   public, max-age=10
+3    Hit from cloudfront        2      200      0.018823   public, max-age=10
+4    Hit from cloudfront        3      200      0.017503   public, max-age=10
+5    Hit from cloudfront        4      200      0.024176   public, max-age=10
+   edge POP: BNE50-P3
+== index.html (no-cache: revalidated every time): https://d3riy98bj197ur.cloudfront.net/index.html
+#    x-cache                    age    status   time_s     cache-control
+1    RefreshHit from cloudfront        200      0.084654   no-cache
+2    RefreshHit from cloudfront        200      0.138644   no-cache
+3    RefreshHit from cloudfront        200      0.041029   no-cache
+4    RefreshHit from cloudfront        200      0.083148   no-cache
+5    RefreshHit from cloudfront        200      0.043783   no-cache
+   edge POP: BNE50-P3

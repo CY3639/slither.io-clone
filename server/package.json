@@ -15,6 +15,7 @@
     "dev:solo": "STATIC_DIR=../client LOG_LEVEL=info METRICS_INTERVAL_MS=30000 node src/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1152.0",
     "@aws-sdk/client-sqs": "^3.1152.0",
     "ws": "^8.22.0"
   }

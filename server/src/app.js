@@ -8,6 +8,21 @@ import { Metrics } from './metrics.js';
 import { createTaskProtection, resolveIdentity } from './aws/ecs.js';
 import { createLogger } from './util/logger.js';
 
+/** Read the shared signing secret from Secrets Manager. On failure the caller falls back to a
+ *  per-process secret: the game still works, but player IDs don't carry across tasks. */
+async function fetchSecret(arn, region, logger) {
+    try {
+        const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+        const client = new SecretsManagerClient({ region, maxAttempts: 3 });
+        const out = await client.send(new GetSecretValueCommand({ SecretId: arn }));
+        logger.info('session_secret_loaded', { source: 'secretsmanager' });
+        return out.SecretString;
+    } catch (err) {
+        logger.error('session_secret_unavailable', { err });
+        return '';
+    }
+}
+
 /**
  * Wire everything together. Used by index.js and by the integration tests (which pass a
  * different config, a silent logger and an in-memory sink).
@@ -18,6 +33,7 @@ export async function createApp(config, { logger: baseLogger, sink: sinkOverride
     const logger = bootLogger.child({ taskId: identity.taskShort });
 
     let secret = config.sessionSecret;
+    if (!secret && config.sessionSecretArn) secret = await fetchSecret(config.sessionSecretArn, config.region, logger);
     if (!secret) {
         // Fine for local runs; in AWS the secret comes from SSM so all tasks agree on player IDs.
         secret = randomBytes(32).toString('hex');

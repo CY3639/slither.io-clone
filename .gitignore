@@ -10,3 +10,4 @@ client/dist/
 load-tests/results/*.json
 !load-tests/results/.gitkeep
 .DS_Store
+infra/.state/

@@ -107,7 +107,19 @@ index.html → Phaser.Game(800x500) → Game state
   (ECR: `a3/n5528712-*`, following the A2 convention).
 * A2 practice shows students can create ECS clusters, ECR repos, SQS, Lambda, DynamoDB, ACM certificates and Route 53 records
   in the shared `cab432.com` zone.
-* **Not yet verified** (the SSO session had expired at inspection time): whether CloudFormation and IAM role creation are permitted,
-  the available VPC/subnets, and existing IAM roles. These are checked before provisioning (Phase 6) and recorded here.
-* Local AWS CLI config: the `CAB432-STUDENT-901444280953` profile has both `sso_session = a2` and a conflicting `sso_start_url`,
-  so the CLI refuses it. The default profile (used by the `awsfresh` shell helper) targets the same account and role.
+### Verified on 2026-10-19 (SSO role `CAB432-STUDENT`, account 901444280953)
+
+| Capability | Result | Consequence for the design |
+|------------|--------|----------------------------|
+| CloudFormation | Allowed | Used for the data, backend, frontend and monitoring stacks. |
+| `iam:CreateRole` | **Explicit deny** (`Do-Not-Delete-LT1-AllowPolicy-AND-DenyPolicy-1`) | Pre-provisioned roles: `Execution-Role-CAB432-ECS`, `Task-Role-CAB432-ECS`, `CAB432-Lambda-Role`. Their policies can't be read (`iam:ListRolePolicies` denied), so least privilege can't be enforced by me. Documented as a limitation. |
+| `ec2:CreateSecurityGroup` | **Explicit deny** | The shared `CAB432SG` (inbound 80/443/8080… from 0.0.0.0/0) is used. Compensating controls: tasks run in **private subnets with no public IP**, and the ALB only forwards requests carrying a secret `X-Origin-Verify` header that only CloudFront sends (everything else gets 403). |
+| `acm:RequestCertificate` | **Explicit deny** (`…DenyPolicy-4`) | No HTTPS listener on the ALB. Viewer→CloudFront is HTTPS/WSS. The CloudFront→ALB hop is HTTP (trade-off documented). |
+| `s3:DeleteBucket`, `s3:PutEncryptionConfiguration`, `s3:PutLifecycleConfiguration` | **Denied** | A failed stack can't roll back a bucket, so buckets are created by `infra/scripts/ensure-buckets.sh`. Default SSE-S3 encryption is on anyway. New buckets have S3 ABAC enabled, so tags are set with `s3control tag-resource`. |
+| `logs:DeleteLogGroup`, `logs:PutRetentionPolicy` | **Denied** | Log groups are created by script. Retention can't be set by the student role (logs are kept indefinitely; cost noted). |
+| `lambda:GetFunction` on not-yet-existing functions | **Explicit deny** (`…DenyPolicy-2`) | The CloudFormation Lambda handler fails, so functions, the ALB invoke permission and the SQS event-source mapping are created by `infra/scripts/deploy-lambdas.sh` (tagged `create-function` is allowed). |
+| `dynamodb:DeleteTable` | Not attempted (the table was imported into the stack instead) | Data resources use `DeletionPolicy: Retain`. |
+| ECS task scale-in protection (`ecs:UpdateTaskProtection` via agent endpoint) | Allowed for `Task-Role-CAB432-ECS` | Active worlds are protected from scale-in. |
+| Secrets Manager read from the task role | Allowed | The session secret is read at startup (not injected by the execution role). |
+| Service-linked role `AWSServiceRoleForApplicationAutoScaling_ECSService` | Exists | ECS Service Auto Scaling works. |
+| Network | One shared Control Tower VPC `vpc-007bab53289655834`: 3 public subnets (IGW) + 3 private subnets (existing NAT gateways, S3 gateway endpoint) | ALB in public subnets, tasks in private subnets. The NAT gateways are pre-existing account infrastructure, not provisioned by this project. |

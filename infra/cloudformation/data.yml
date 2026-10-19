@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  n5528712 CAB432 A3 - stateful/durable resources: DynamoDB single table, SQS events queue + DLQ,
+  ECR repository and the session-token signing secret. Kept separate from compute so the backend
+  can be torn down and redeployed without data loss. S3 buckets are NOT managed here: the CAB432
+  account denies s3:DeleteBucket, so a failed stack could never roll a bucket back. Buckets are
+  created idempotently by infra/scripts/ensure-buckets.sh instead.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: n5528712-a3
+  QutUsername:
+    Type: String
+    Default: n5528712@qut.edu.au
+
+Resources:
+  # ---------------------------------------------------------------- DynamoDB
+  GameTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub '${Prefix}-game'
+      BillingMode: PAY_PER_REQUEST # bursty, low average traffic: on-demand is cheapest
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: N }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1 # sparse leaderboard index: only profiles with a best score
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [displayName, bestScore, bestScoreAt]
+      TimeToLiveSpecification:
+        AttributeName: ttl # idempotency markers expire after 7 days
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  # ---------------------------------------------------------------- SQS
+  EventsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${Prefix}-events-dlq'
+      MessageRetentionPeriod: 1209600 # 14 days to inspect/redrive poison messages
+      SqsManagedSseEnabled: true
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${Prefix}-events'
+      VisibilityTimeout: 60 # 6x the worker's 10 s timeout (AWS guidance for SQS event sources)
+      MessageRetentionPeriod: 345600 # 4 days: survives a long worker outage
+      ReceiveMessageWaitTimeSeconds: 20 # long polling
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EventsDLQ.Arn
+        maxReceiveCount: 3
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  # ---------------------------------------------------------------- ECR
+  GameRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub 'a3/${Prefix}-game'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"keep last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  # ---------------------------------------------------------------- secret
+  SessionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${Prefix}-session-secret'
+      Description: HMAC key that signs anonymous player IDs; shared by all game tasks.
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+Outputs:
+  TableName: { Value: !Ref GameTable, Export: { Name: !Sub '${Prefix}-TableName' } }
+  TableArn: { Value: !GetAtt GameTable.Arn, Export: { Name: !Sub '${Prefix}-TableArn' } }
+  QueueUrl: { Value: !Ref EventsQueue, Export: { Name: !Sub '${Prefix}-QueueUrl' } }
+  QueueArn: { Value: !GetAtt EventsQueue.Arn, Export: { Name: !Sub '${Prefix}-QueueArn' } }
+  QueueName: { Value: !GetAtt EventsQueue.QueueName, Export: { Name: !Sub '${Prefix}-QueueName' } }
+  DLQArn: { Value: !GetAtt EventsDLQ.Arn, Export: { Name: !Sub '${Prefix}-DLQArn' } }
+  DLQName: { Value: !GetAtt EventsDLQ.QueueName, Export: { Name: !Sub '${Prefix}-DLQName' } }
+  DLQUrl: { Value: !Ref EventsDLQ }
+  RepositoryUri: { Value: !GetAtt GameRepository.RepositoryUri, Export: { Name: !Sub '${Prefix}-RepositoryUri' } }
+  RepositoryArn: { Value: !GetAtt GameRepository.Arn }
+  SessionSecretArn: { Value: !Ref SessionSecret, Export: { Name: !Sub '${Prefix}-SessionSecretArn' } }

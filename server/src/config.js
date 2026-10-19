@@ -66,6 +66,8 @@ export function loadConfig() {
 
         // HMAC secret used to sign anonymous player IDs. In AWS it is injected from SSM Parameter Store.
         sessionSecret: str('SESSION_SECRET', ''),
+        // Preferred in AWS: the secret's ARN, read at startup with the task role (never in the image).
+        sessionSecretArn: str('SESSION_SECRET_ARN', ''),
         taskProtection: bool('TASK_PROTECTION', Boolean(process.env.ECS_AGENT_URI)),
         shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 8000, { min: 0, max: 60000 }),
 

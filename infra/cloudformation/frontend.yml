@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  n5528712 CAB432 A3 - edge: one CloudFront distribution serving the static client from a private
+  S3 bucket (Origin Access Control), and proxying /ws (WebSocket, never cached) and /api/*
+  (leaderboard, cached 10 s) to the ALB with a secret origin header. One origin for page, API and
+  socket means HTTPS/WSS everywhere and no CORS.
+
+Parameters:
+  Prefix: { Type: String, Default: n5528712-a3 }
+  QutUsername: { Type: String, Default: n5528712@qut.edu.au }
+  FrontendBucket: { Type: String, Description: Pre-created private bucket (infra/scripts/ensure-buckets.sh) }
+  AlbDnsName: { Type: String }
+  OriginVerifySecret: { Type: String, NoEcho: true }
+
+Mappings:
+  ManagedPolicies: # AWS managed CloudFront policy IDs
+    Ids:
+      CachingOptimized: 658327ea-f89d-4fab-a63d-7e88639e58f6
+      CachingDisabled: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+      AllViewerExceptHostHeader: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${Prefix}-frontend-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Leaderboard responses: short TTL at the edge. Only the query strings that change the answer
+  # are in the cache key, so ?limit=10 from every player is one cache entry.
+  ApiCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${Prefix}-api-10s'
+        Comment: Edge cache for the leaderboard API (honours origin Cache-Control up to 60 s)
+        MinTTL: 0
+        DefaultTTL: 10
+        MaxTTL: 60
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          CookiesConfig: { CookieBehavior: none }
+          HeadersConfig: { HeaderBehavior: none }
+          QueryStringsConfig:
+            QueryStringBehavior: whitelist
+            QueryStrings: [limit, id]
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${Prefix} Battle Snake'
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_All # Australian edge locations are only in PriceClass_All
+        DefaultRootObject: index.html
+        Origins:
+          - Id: s3-frontend
+            DomainName: !Sub '${FrontendBucket}.s3.${AWS::Region}.amazonaws.com'
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig: { OriginAccessIdentity: '' }
+          - Id: alb-game
+            DomainName: !Ref AlbDnsName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only # account cannot issue ACM certificates (see backend.yml)
+              HTTPPort: 80
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+            OriginCustomHeaders:
+              - { HeaderName: X-Origin-Verify, HeaderValue: !Ref OriginVerifySecret }
+        DefaultCacheBehavior:
+          TargetOriginId: s3-frontend
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: !FindInMap [ManagedPolicies, Ids, CachingOptimized]
+        CacheBehaviors:
+          - PathPattern: /ws
+            TargetOriginId: alb-game
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            Compress: false
+            CachePolicyId: !FindInMap [ManagedPolicies, Ids, CachingDisabled]
+            OriginRequestPolicyId: !FindInMap [ManagedPolicies, Ids, AllViewerExceptHostHeader]
+          - PathPattern: /api/*
+            TargetOriginId: alb-game
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: !Ref ApiCachePolicy
+          - PathPattern: /status
+            TargetOriginId: alb-game
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: !FindInMap [ManagedPolicies, Ids, CachingDisabled]
+          - PathPattern: /health
+            TargetOriginId: alb-game
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: !FindInMap [ManagedPolicies, Ids, CachingDisabled]
+      Tags:
+        - { Key: purpose, Value: assessment 3 }
+        - { Key: qut-username, Value: !Ref QutUsername }
+
+  # Only this distribution can read the bucket (no public access, no direct S3 URLs).
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${FrontendBucket}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+Outputs:
+  DistributionId: { Value: !Ref Distribution, Export: { Name: !Sub '${Prefix}-DistributionId' } }
+  DistributionDomain: { Value: !GetAtt Distribution.DomainName, Export: { Name: !Sub '${Prefix}-DistributionDomain' } }
+  DistributionArn: { Value: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}' }
+  AppUrl: { Value: !Sub 'https://${Distribution.DomainName}/' }
+  WebSocketUrl: { Value: !Sub 'wss://${Distribution.DomainName}/ws' }
