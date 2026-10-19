@@ -36,7 +36,8 @@ log_game="arn:aws:logs:$AWS_REGION:$ACCOUNT_ID:log-group:$GAME_LOG_GROUP"
 aws logs describe-log-groups --log-group-name-prefix "$GAME_LOG_GROUP" --query 'logGroups[0].arn' --output text | grep -q "$GAME_LOG_GROUP" || die "game log group missing"
 stack_arn() { q cloudformation describe-stacks --stack-name "$1" --query 'Stacks[0].StackId'; }
 
-entry() { printf '  - type: %s\n    arn: %s\n    description: %s\n\n' "$1" "$2" "$3"; }
+# Descriptions are double-quoted (they contain ': '); embedded double quotes are escaped.
+entry() { printf '  - type: %s\n    arn: %s\n    description: "%s"\n\n' "$1" "$2" "${3//\"/\\\"}"; }
 
 {
 cat <<EOF

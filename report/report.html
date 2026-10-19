@@ -308,6 +308,13 @@ followed from the measurements, both captured by the load tester:</p>
 <tr><td>Delta-encoded body points (head absolute, then small offsets)</td><td>8.6 MB (−41 %)</td><td>≈ 54 KiB/s</td><td>E14b</td></tr>
 <tr><td>+ WebSocket permessage-deflate (level 1, context takeover)</td><td>2.3 MB (−74 % vs. delta)</td><td>≈ 14.7 KiB/s</td><td>E17</td></tr>
 </table>
+<p>Those runs used young worlds. In the 25-minute AWS run, snakes grew and more of them were in view, and the
+server-side <code>SnapshotBytesPerSec</code> metric showed <b>≈100–111 KiB/s per player uncompressed</b>
+<span class="ev">[E17]</span>. An offline model of a 4-minute-old world (<code>tools/bandwidth-sim.mjs</code>, mean snake length 75)
+gave 157 KiB/s raw, 47 KiB/s with deflate and <b>30.5 KiB/s</b> when bodies are also sent at <b>half resolution</b>
+(sections 0, 2, 4, … plus the tail; the client rebuilds the skipped ones as neighbour midpoints, within 2 px of the
+true positions, which a server test checks using the real client decoder). Both changes were deployed. The
+deployed result is in §5. ⟦AWS_DEFLATE_MEASUREMENT⟧</p>
 <p>Compression added about +2.5 points of host-core CPU (≈ +10 points of a 0.25 vCPU task), a good trade because
 egress costs more than compute in this design. Enabling compression also exposed a shutdown bug: sends become
 asynchronous, and the server terminated sockets before the final <code>bye</code> message was flushed. The integration

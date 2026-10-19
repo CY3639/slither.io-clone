@@ -6,3 +6,6 @@ time                 desired running pending healthy occup%    cpu%    last-scal
 12:36:39             5       5       0       5       0.0       3.0     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
 12:37:10             5       5       0       5       0.0       2.9     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
 12:37:42             5       5       0       5       0.0       3.0     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
+12:38:14             5       5       0       5       0.0       3.0     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
+12:38:46             5       5       0       5       0.0       3.0     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
+12:39:17             5       5       0       5       0.0       3.0     2026-10-19T12:17:15.593000+10:00	Setting desired count to 5.
