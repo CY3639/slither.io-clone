@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Battle Snake</title>
+    <!-- build:css -->
+    <link rel="stylesheet" href="styles.css" />
+    <!-- endbuild -->
+</head>
+<body>
+    <div id="game"></div>
+
+    <div id="hud" class="hidden">
+        <div class="hud-top-left">
+            <div id="status" class="pill">Not connected</div>
+            <div class="pill subtle"><span id="server-info">task ? · world –</span> · <span id="ping">– ms</span></div>
+        </div>
+        <div id="score-box">Score <span id="score">0</span></div>
+        <div class="hud-right">
+            <div class="panel">
+                <h3>This world</h3>
+                <ol id="world-lb-list"></ol>
+            </div>
+            <div class="panel">
+                <h3>All-time best</h3>
+                <ol id="global-lb-mini-list"></ol>
+            </div>
+        </div>
+        <div class="hint">Mouse or ← → to steer · hold SPACE or click to boost</div>
+    </div>
+
+    <div id="join-panel" class="overlay">
+        <div class="card">
+            <h1>Battle Snake</h1>
+            <p class="sub">Up to 4 players per world · NPCs fill the rest of the 50 snakes</p>
+            <form id="join-form">
+                <input id="name-input" maxlength="16" autocomplete="off" placeholder="Display name" />
+                <button type="submit">Play</button>
+            </form>
+            <p id="personal-best" class="sub"></p>
+            <h3>All-time leaderboard</h3>
+            <ol id="global-lb-list" class="lb-large"></ol>
+            <p id="global-lb-note" class="sub"></p>
+        </div>
+    </div>
+
+    <div id="lobby-panel" class="overlay hidden">
+        <div class="card">
+            <h2>Waiting for players</h2>
+            <p class="countdown" id="lobby-countdown">10.0 s</p>
+            <p id="lobby-players" class="sub"></p>
+            <p class="sub">The world starts when 4 humans have joined or the timer runs out.</p>
+        </div>
+    </div>
+
+    <div id="death-panel" class="overlay hidden">
+        <div class="card">
+            <h2>You died</h2>
+            <p>Score <strong id="death-score">0</strong></p>
+            <p id="death-cause" class="sub"></p>
+            <button id="respawn-btn">Respawn now</button>
+            <p class="sub">Respawning in <span id="respawn-countdown">3.0</span> s</p>
+        </div>
+    </div>
+
+    <div id="conn-panel" class="banner hidden">
+        <span id="conn-text">Reconnecting…</span>
+        <button id="retry-btn" class="hidden">Retry</button>
+    </div>
+    <div id="toast" class="banner toast hidden"></div>
+
+    <!-- build:js -->
+    <script src="lib/phaser.min.js"></script>
+    <script src="src/config.js"></script>
+    <script src="src/palette.js"></script>
+    <script src="src/net.js"></script>
+    <script src="src/snapshotBuffer.js"></script>
+    <script src="src/views.js"></script>
+    <script src="src/game.js"></script>
+    <script src="src/ui.js"></script>
+    <script src="src/main.js"></script>
+    <!-- endbuild -->
+</body>
+</html>

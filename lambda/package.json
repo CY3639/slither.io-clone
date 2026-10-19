@@ -1,0 +1,14 @@
+{
+  "name": "n5528712-a3-lambdas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQS event worker and leaderboard API (Node.js 22 Lambda runtime; AWS SDK v3 is provided by the runtime)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/**/*.test.mjs'"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1152.0",
+    "@aws-sdk/lib-dynamodb": "^3.1152.0"
+  }
+}

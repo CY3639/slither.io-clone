@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "game-local",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/dev.mjs"
+      ],
+      "port": 8080
+    }
+  ]
+}

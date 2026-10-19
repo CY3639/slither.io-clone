@@ -1,0 +1,14 @@
+{
+  "name": "n5528712-a3-battle-snake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CAB432 Assessment 3: cloud-native multiplayer Slither.io (n5528712)",
+  "type": "module",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix lambda install",
+    "test": "npm --prefix server test && npm --prefix lambda test",
+    "dev": "node tools/dev.mjs",
+    "build:client": "node client/build.mjs",
+    "load": "node load-tests/websocket-load.js"
+  }
+}
