@@ -27,7 +27,12 @@ SnapshotBuffer.prototype = {
         this.offset = Math.min.apply(null, this.offsets);
 
         snap.byId = {};
-        for (var i = 0; i < snap.sn.length; i++) snap.byId[snap.sn[i].i] = snap.sn[i];
+        for (var i = 0; i < snap.sn.length; i++) {
+            var s = snap.sn[i];
+            // Bodies arrive delta-encoded (head absolute, then offsets); expand to absolute points.
+            for (var k = 2; k < s.p.length; k++) s.p[k] += s.p[k - 2];
+            snap.byId[s.i] = s;
+        }
         this.snaps.push(snap);
         if (this.snaps.length > 30) this.snaps.shift();
     },

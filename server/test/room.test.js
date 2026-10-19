@@ -109,7 +109,21 @@ test('snapshots contain the own snake and stay within the area of interest', () 
     const me = snap.sn.find((s) => s.i === snap.me);
     assert.ok(me, 'own snake included');
     assert.ok(snap.sn.length < 50, `AoI culls distant snakes (${snap.sn.length} visible)`);
-    assert.equal(me.p.length, me.p.length - (me.p.length % 2));
+    assert.equal(me.p.length % 2, 0);
+
+    // Points are delta-encoded: decoding must give back the authoritative section positions.
+    room.broadcastSnapshot(clock.now()); // fresh snapshot of the current state
+    const fresh = a.last('s');
+    const mine = fresh.sn.find((s) => s.i === fresh.me);
+    const snake = room.world.snakes.get(fresh.me);
+    const abs = [...mine.p];
+    for (let k = 2; k < abs.length; k++) abs[k] += abs[k - 2];
+    assert.equal(abs.length / 2, snake.length);
+    for (let i = 0; i < snake.length; i++) {
+        assert.equal(abs[i * 2], Math.round(snake.secX[i]));
+        assert.equal(abs[i * 2 + 1], Math.round(snake.secY[i]));
+    }
+    assert.ok(Math.max(...mine.p.slice(2).map(Math.abs)) < 30, 'deltas are small numbers');
 });
 
 test('drain sends bye, closes sockets and ends the world', () => {

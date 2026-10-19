@@ -385,10 +385,18 @@ export class Room {
         const fragmentOf = (snake) => {
             let frag = fragments.get(snake.id);
             if (frag === undefined) {
+                // Delta-encoded body: head absolute, then each section relative to the previous
+                // one. Sections are ~10 px apart, so most numbers are 1-2 digits instead of 4-5.
                 const pts = new Array(snake.length * 2);
+                let px = 0;
+                let py = 0;
                 for (let i = 0; i < snake.length; i++) {
-                    pts[i * 2] = Math.round(snake.secX[i]);
-                    pts[i * 2 + 1] = Math.round(snake.secY[i]);
+                    const x = Math.round(snake.secX[i]);
+                    const y = Math.round(snake.secY[i]);
+                    pts[i * 2] = x - px;
+                    pts[i * 2 + 1] = y - py;
+                    px = x;
+                    py = y;
                 }
                 frag = JSON.stringify({
                     i: snake.id,

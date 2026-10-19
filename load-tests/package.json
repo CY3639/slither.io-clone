@@ -1,0 +1,6 @@
+{
+  "name": "n5528712-a3-load-tests",
+  "private": true,
+  "type": "module",
+  "dependencies": { "ws": "^8.22.0" }
+}

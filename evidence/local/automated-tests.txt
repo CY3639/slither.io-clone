@@ -1,0 +1,67 @@
+# npm test (server + lambda) — 2026-10-19T01:11:11Z
+✔ health and readiness endpoints respond (16.312ms)
+✔ two clients share one authoritative world with 50 snakes; ROOM_FULL for a 5th; malformed input rejected (1189.01075ms)
+✔ a client that never joins is closed after the join timeout (5003.640292ms)
+✔ graceful shutdown tells connected players to reconnect (5.337417ms)
+✔ rejects non-JSON, non-objects and unknown types (0.741791ms)
+✔ input requires a finite angle; boost coerced to boolean (0.951458ms)
+✔ client cannot send position, score or length (extra fields are discarded) (0.156667ms)
+✔ join sanitises name, validates ids and clamps viewport (1.758ms)
+✔ sanitizeName caps length and defaults to Anonymous (0.06675ms)
+✔ rate limiter allows the burst then throttles until tokens refill (0.087208ms)
+✔ publishes envelopes with unique eventIds in batches of at most 10 (3.589416ms)
+✔ retries only the failed entries with backoff, then succeeds (2.289417ms)
+✔ gives up after maxRetries and logs the full event (bounded retry, no infinite loop) (5.926875ms)
+✔ bounded buffer drops the oldest event when full (0.351542ms)
+✔ close() flushes pending events before shutdown (0.255292ms)
+✔ first human opens a lobby; the world starts after at most 10 s and fills to 50 with NPCs (15.315417ms)
+✔ NPC fill is 50 - humans for 1..4 humans (143.665833ms)
+✔ four humans start the world immediately (3.148917ms)
+✔ fifth human receives ROOM_FULL (3.634917ms)
+✔ late joiner replaces an NPC in a running world (5.991542ms)
+✔ a lobby that empties goes back to idle; a world that empties completes (3.673541ms)
+✔ human death publishes PLAYER_DIED, then auto-respawns after RESPAWN_MS (247.787416ms)
+✔ snapshots contain the own snake and stay within the area of interest (4.588791ms)
+✔ drain sends bye, closes sockets and ends the world (3.4035ms)
+✔ returning player keeps their signed player id; forged id is replaced (0.174792ms)
+✔ new snake has the original 30 sections plus head, evenly spaced behind the head (2.425583ms)
+✔ moves at slow speed, and fast speed when boosting (2.270125ms)
+✔ turn rate is bounded by turnRate (2 rad/s) (0.774667ms)
+✔ body follows the head path (sections stay spaced while turning) (0.953792ms)
+✔ grow() adds a section and scales by 1.01, capped (0.165166ms)
+✔ starts with the ambient food target (1.791458ms)
+✔ eating food grows the snake and emits a food removal delta (1.80175ms)
+✔ head edge hitting another body kills the attacker; the victim is credited with the kill (0.621709ms)
+✔ own body never kills (tight circle) (5.793834ms)
+✔ leaving the arena kills with cause "boundary" (0.152208ms)
+✔ a dead snake drops food along its body (every second section) (0.083708ms)
+✔ a full NPC world keeps simulating with stable timing (111.977875ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12337.748875
+✔ GET /api/leaderboard returns ranked items with an edge-cacheable header (1.45425ms)
+✔ limit is clamped and invalid player ids are rejected (0.430542ms)
+✔ store failures return 500 without leaking details (0.15475ms)
+✔ PLAYER_DIED: conditional max update first, then one transaction with the idempotency marker (2.171292ms)
+✔ a redelivered event (marker exists) is reported as duplicate, not an error (0.350584ms)
+✔ other transaction failures propagate so SQS retries the message (0.4135ms)
+✔ leaderboard is a descending Query on GSI1 (no Scan) (0.1765ms)
+✔ applies PLAYER_DIED: deaths, kills and best score; leaderboard sorted by best score (3.051375ms)
+✔ duplicate delivery of the same eventId is applied once (idempotent consumer) (0.510375ms)
+✔ malformed and unknown messages fail only their own record (partial batch response) (0.804042ms)
+✔ transient store errors are reported as failures so SQS retries them (0.333208ms)
+✔ world events commute regardless of arrival order (0.256875ms)
+✔ validation rejects missing eventId, bad version and out-of-range values (0.24925ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 129.975708
