@@ -30,7 +30,7 @@ limitation; FAIL = not met.
 | ECS/Fargate hosts the game server | **PASS** | E10, E12 |
 | ALB distributes connections | **PASS** | E14: 14 players distributed 4/4/4/2 across tasks; E13 healthy targets in 3 AZs |
 | ECS Service Auto Scaling works, with real scale-out evidence | **PASS** | E11: desired 1→2→3→4→5 (12:10:15 → 12:17:15 AEST) under synthetic gameplay load |
-| Scale-in after load | ⟦pending⟧ | E11b |
+| Scale-in after load | **PASS** | E11b: 5→4→3→2→1 between 12:47 and 12:59 AEST, after 15 min below target |
 | Scale-in protection for active worlds | **PASS** | E12-task-scale-in-protection.txt: 4 active tasks protected, idle task not |
 | SQS async processing, Lambda consumer, DynamoDB storage | **PASS** | E7, E8, E9 |
 | Retries / DLQ | **PASS** | E16-dlq-test.txt: 3 receives 60 s apart → DLQ → alarm |
@@ -46,3 +46,39 @@ limitation; FAIL = not met.
 | Security: private origin | **PARTIAL** | ALB secret header + private tasks verified (E19). The SG can't be restricted and the origin hop is HTTP (no SG/ACM permissions) |
 | Least-privilege IAM | **PARTIAL** | pre-provisioned roles only (iam:CreateRole denied); policies not inspectable |
 | Log retention ≤7 days | **FAIL (account)** | `logs:PutRetentionPolicy` denied to the student role; retention left at default |
+
+## Definition of done (from the project brief)
+
+| Item | Status | Note |
+|------|--------|------|
+| original gameplay assets reused appropriately | ✅ | all 7 PNGs, Phaser CE 2.6.2, original constants/rules (docs/current-state.md §4) |
+| authoritative server works | ✅ | 37 server tests; deployed |
+| two real clients can play together | ✅ | E1 (local, two browsers), E3/E14 (deployed). Deployed two-window screenshot: S1 |
+| maximum normal humans/world = 4 | ✅ | ROOM_FULL tests; load test 4/4/4/2 |
+| world reaches 50 total entities using NPC fill | ✅ | tests + `/status` |
+| lobby wait is never longer than 10 seconds | ✅ | tests; `lobbyWaitMs` ≤ 10,033 |
+| CloudFront serves frontend | ✅ | E2 |
+| cache HIT can be demonstrated | ✅ | E6 |
+| ECS/Fargate hosts game server | ✅ | E10/E12 |
+| ALB distributes connections | ✅ | E13/E14 |
+| ECS Service Auto Scaling works | ✅ | E11 |
+| real scale-out evidence exists | ✅ | E11 timeline + scaling activities + charts |
+| SQS async processing works | ✅ | E7 |
+| Lambda consumes events | ✅ | E8 |
+| DynamoDB stores results | ✅ | E9 |
+| leaderboard works | ✅ | `/api/leaderboard` + UI |
+| reconnect behaviour works | ✅ | E16 |
+| CloudWatch evidence exists | ✅ | E15, dashboard |
+| automated tests pass | ✅ | 50/50 |
+| load test works | ✅ | E14 |
+| infrastructure is reproducible | ⚠️ PARTIAL | CloudFormation + scripts; some resources by script due to account denies |
+| required AWS resources are correctly tagged | ✅ | inventory |
+| submission YAML contains real deployed resources | ✅ | `submission/submission-infra.yml` (generated from live ARNs, YAML-validated) |
+| vendor-neutral architecture diagram exists | ✅ | `report/figures/vendor-neutral.svg` |
+| AWS architecture diagram exists | ✅ | `report/figures/aws-architecture.svg` |
+| AWS Pricing Calculator inputs are prepared | ✅ | `docs/cost-estimate.md` (public link must be created by the student) |
+| evidence register is complete | ✅ | `docs/evidence-register.md` (console screenshots listed in `evidence/screenshots-needed.md`) |
+| demo plan is complete | ✅ | `docs/demo-video-plan.md` |
+| report describes the actual deployed system | ✅ | `report/` |
+| report does not invent evidence | ✅ | every figure traced to `evidence/` |
+| AI declaration is truthful and awaiting user review | ⏳ | marked ⟦STUDENT TO REVIEW⟧ on the title page |

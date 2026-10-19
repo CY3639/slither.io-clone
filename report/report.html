@@ -54,7 +54,7 @@ Balancer that accepts only CloudFront's secret header.</p>
   14 synthetic players, seating all of them across four worlds plus one empty headroom world, with 0 connection errors and
   RTT p50 16 ms. Measurement showed a full world uses only 20–30 % of its 0.25 vCPU, so a custom world-occupancy metric
   (target 75 %) is the primary scaling signal, with CPU as a safety net. ECS task scale-in protection prevents
-  scale-in from ending games in progress. ⟦SCALE_IN_SUMMARY⟧</li>
+  scale-in from ending games in progress. When the load stopped, it scaled back in step by step to the minimum of one task (12:47–12:59).</li>
   <li><b>Edge caching:</b> fingerprinted assets are CloudFront hits from the Brisbane edge (≈20 ms). The leaderboard API
   drops from 615 ms (miss) to ≈20 ms (hit).</li>
   <li><b>Asynchronous, idempotent persistence:</b> real game events flowed through SQS and Lambda into DynamoDB, including
@@ -378,9 +378,11 @@ appears as the early spike; the measured run starts at 12:07.</figcaption></figu
 <tr><td>12:12:15</td><td>"Setting desired count to 3."</td><td>12 / 3 (4 + 4 + 4)</td></tr>
 <tr><td>12:15:15</td><td>"Setting desired count to 4."</td><td>14 / 4 (4 + 4 + 4 + 2): every player placed</td></tr>
 <tr><td>12:17:15</td><td>"Setting desired count to 5." Occupancy 14/20 = 70 %, inside the target band, so steady</td><td>14 / 5 (one empty world as headroom)</td></tr>
-<tr><td>⟦SCALE_IN_ROWS⟧</td></tr>
+<tr><td>12:32</td><td>Load stops; worlds empty; every task releases scale-in protection <span class="ev">[E11b]</span></td><td>0 / 5</td></tr>
+<tr><td>12:47:07</td><td>After 15 one-minute datapoints below 67.5 % (the policy's scale-in threshold, 0.9 × target): "Setting desired count to 4."</td><td>0 / 4</td></tr>
+<tr><td>12:51:20 · 12:55:20 · 12:59:20</td><td>"… to 3", "… to 2", "… to 1": one step per evaluation after the 180 s scale-in cooldown</td><td>0 / 1 (minimum)</td></tr>
 </table>
-<p>Each step needed three consecutive one-minute datapoints above target plus the 60 s scale-out cooldown, so the
+<p>Scale-out is deliberately faster than scale-in: three one-minute datapoints above target versus fifteen below, and a 60 s versus 180 s cooldown. A short dip in players therefore does not destroy worlds. Each scale-out step needed three consecutive one-minute datapoints above target plus the 60 s scale-out cooldown, so the
 fleet grew by one world roughly every 2–3 minutes, and the sequence 1→2→3→4→5 followed
 <code>ceil(tasks × occupancy / 75)</code>. New tasks were registered and healthy 30–45 s after each decision. Across the run the
 load tester recorded <b>0 connection errors</b>, WebSocket RTT <b>p50 16 ms / p95 29 ms / p99 68 ms</b> (8,769 pings) from Brisbane via the

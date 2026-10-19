@@ -1,0 +1,30 @@
+2026-10-19T12:59:37.029000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:59:37.012000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:59:37.008000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:59:28.293000+10:00	(service n5528712-a3-game) has stopped 1 running tasks: (task fafc9a7cee7a434685fbd31b5942841a).
+2026-10-19T12:55:36.186000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:55:36.167000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:55:36.163000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:55:26.251000+10:00	(service n5528712-a3-game) has stopped 1 running tasks: (task ac1f0753ed6945e7801097ce13966c9d).
+2026-10-19T12:51:40.663000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:51:40.647000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:51:40.643000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:51:30.814000+10:00	(service n5528712-a3-game) has stopped 1 running tasks: (task f371d05877cb44c08eccdd6865543983).
+2026-10-19T12:47:19.575000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:47:19.558000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:47:19.553000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:47:10.034000+10:00	(service n5528712-a3-game) has stopped 1 running tasks: (task 38980ea19b614871a9377cfda252a9de).
+2026-10-19T12:19:47.817000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:19:28.041000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:19:00.496000+10:00	(service n5528712-a3-game) has started 1 tasks: (task fafc9a7cee7a434685fbd31b5942841a).
+2026-10-19T12:18:59.791000+10:00	(service n5528712-a3-game, taskSet ecs-svc/8974392777950246810) has begun draining connections on 1 tasks.
+2026-10-19T12:18:59.786000+10:00	(service n5528712-a3-game) deregistered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:18:14.196000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:17:45.716000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:17:27.021000+10:00	(service n5528712-a3-game) has started 1 tasks: (task f371d05877cb44c08eccdd6865543983).
+2026-10-19T12:16:09.058000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:15:40.816000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:15:21.849000+10:00	(service n5528712-a3-game) has started 1 tasks: (task 38980ea19b614871a9377cfda252a9de).
+2026-10-19T12:13:11.035000+10:00	(service n5528712-a3-game) has reached a steady state.
+2026-10-19T12:12:52.124000+10:00	(service n5528712-a3-game) registered 1 targets in (target-group arn:aws:elasticloadbalancing:ap-southeast-2:901444280953:targetgroup/n5528712-a3-game-tg/ad396548d7ac8f9f)
+2026-10-19T12:12:24.445000+10:00	(service n5528712-a3-game) has started 1 tasks: (task ac1f0753ed6945e7801097ce13966c9d).
